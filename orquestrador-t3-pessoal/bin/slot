@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Semáforo para comandos pesados, para vários agentes rodarem sem travar a máquina.
+# Uso: <estado>/bin/slot <build|test|browser|install> -- <comando...>
+# - Vagas por classe: SLOTS_BUILD, SLOTS_TEST, SLOTS_BROWSER, SLOTS_INSTALL (orq.env).
+# - Espera vaga (e a máquina sair do estado crítico) até SLOT_ESPERA_MAX_MIN; depois sai com 75 (tente de novo).
+# - Roda com nice/ionice e, se SLOT_MEM_MAX estiver definido e o systemd do usuário responder, num escopo com teto de
+#   memória: um build que estoura é morto sozinho em vez de levar a máquina para o swap.
+# - Exporta ORQ_JOBS (núcleos por comando pesado) e MAKEFLAGS=-j$ORQ_JOBS se não houver.
+. "$(dirname "$0")/_comum.sh"
+classe="${1:-}"; shift || true
+case "$classe" in build|test|browser|install) ;; *) echo "uso: slot <build|test|browser|install> -- <comando...>" >&2; exit 64 ;; esac
+[ "${1:-}" = "--" ] && shift
+[ $# -gt 0 ] || { echo "slot: falta o comando" >&2; exit 64; }
+var="SLOTS_${classe^^}"; n="${!var:-1}"
+lockdir="$ORQ/locks"; mkdir -p "$lockdir"
+cpus=$(nproc)
+export ORQ_JOBS=$(( cpus / ( ${SLOTS_BUILD:-1} + ${SLOTS_TEST:-1} ) )); [ "$ORQ_JOBS" -ge 1 ] || ORQ_JOBS=1
+export MAKEFLAGS="${MAKEFLAGS:--j$ORQ_JOBS}"
+RUN=(nice -n 10)
+command -v ionice >/dev/null && RUN+=(ionice -c2 -n7)
+if [ -n "${SLOT_MEM_MAX:-}" ] && command -v systemd-run >/dev/null; then
+  ESCOPO=(systemd-run --user --scope --quiet -p "MemoryMax=$SLOT_MEM_MAX" -p MemorySwapMax=0 --)
+  "${ESCOPO[@]}" true 2>/dev/null && RUN+=("${ESCOPO[@]}")
+fi
+critico() {  # load muito acima do teto ou memória livre abaixo de metade da reserva
+  awk -v lim="${CARGA_CRITICA:-999}" '{exit !($1 > lim)}' /proc/loadavg && return 0
+  awk -v r="${RESERVA_MEM_GB:-0}" '/MemAvailable/ {exit !($2/1048576 < r/2)}' /proc/meminfo
+}
+OCUPADO=197; inicio=$(date +%s); aviso=0; limite=$(( ${SLOT_ESPERA_MAX_MIN:-15} * 60 ))
+while true; do
+  if ! critico; then
+    for i in $(seq 1 "$n"); do
+      flock -n -o -E "$OCUPADO" "$lockdir/$classe-$i.lock" "${RUN[@]}" "$@"; rc=$?
+      [ "$rc" -ne "$OCUPADO" ] && exit "$rc"
+    done
+  fi
+  agora=$(date +%s)
+  if [ $(( agora - inicio )) -ge "$limite" ]; then
+    echo "slot: sem vaga de $classe em ${SLOT_ESPERA_MAX_MIN:-15} min; tente de novo mais tarde" >&2; exit 75
+  fi
+  if [ $(( agora - aviso )) -ge 60 ]; then
+    if critico; then motivo="máquina em estado crítico"; else motivo="$n vaga(s) de $classe ocupada(s)"; fi
+    echo "slot: esperando ($motivo) há $(( agora - inicio ))s" >&2; aviso=$agora
+  fi
+  sleep 10
+done

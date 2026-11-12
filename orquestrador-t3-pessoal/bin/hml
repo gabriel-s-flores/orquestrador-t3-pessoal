@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+# Autenticação de teste para os agentes, só em localhost e homologação (AMBIENTE.md). O usuário configura uma vez; os
+# agentes usam sem pedir nada. Produção não recebe credencial: a URL precisa estar em HOSTS_PERMITIDOS.
+# Uso: hml guardar <usuario|senha|token>   (usuário) pede o valor sem eco e guarda no chaveiro do sistema
+#      hml capturar [--url URL]            (usuário, uma vez por expiração) abre o Chrome no login; entre e feche a janela
+#      hml checar                          o que está guardado (sem valores), idade da sessão, URL conferida
+#      hml exec -- <comando...>            roda o comando com HML_URL, HML_USUARIO, HML_SENHA, HML_TOKEN e HML_PERFIL
+#      hml vivo [--em <pasta>]             login de verdade (sessão nova): diz se a homologação está NO AR, se a credencial
+#                                          foi RECUSADA ou se está FORA DO AR. Sobe o servidor local se HML_URL for localhost
+#      hml esquecer                        apaga credenciais e sessão deste projeto
+# Cofre por conta de teste (HML_CONTA, padrão ORQ_ID): chaveiro (secret-tool, serviço orq-hml-pessoal) ou, com HML_COFRE=arquivo,
+# ~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env (600). A sessão do navegador fica na mesma pasta.
+import os, sys, json, time, fcntl, signal, threading, shutil, socket, getpass, tempfile, subprocess, datetime
+from urllib.parse import urlparse
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from _orq import estado, params, url_permitida
+O = estado(); P = params(O)
+CONTA = P.get('HML_CONTA') or P.get('ORQ_ID') or os.path.basename(O)   # orquestrações do mesmo projeto compartilham
+SEG = os.path.join(os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')), 'orquestrador-t3-pessoal', 'hml', CONTA)
+PERFIL = os.path.join(SEG, 'chrome-hml'); META = os.path.join(SEG, 'sessao.json')
+ARQ = os.path.join(SEG, 'hml.env'); CAMPOS = ('usuario', 'senha', 'token')
+CHROME = shutil.which('google-chrome-stable') or shutil.which('google-chrome') or shutil.which('chromium')
+ARGS_CHROME = ['--password-store=basic', '--no-first-run', '--no-default-browser-check']
+usa_arquivo = P.get('HML_COFRE') == 'arquivo' or not shutil.which('secret-tool')
+
+def seg():
+    os.makedirs(SEG, mode=0o700, exist_ok=True); os.chmod(SEG, 0o700)
+
+def ler(campo):
+    if usa_arquivo:
+        if os.path.exists(ARQ):
+            for l in open(ARQ):
+                k, _, v = l.rstrip('\n').partition('=')
+                if k == campo: return v
+        return None
+    r = subprocess.run(['secret-tool', 'lookup', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', campo], capture_output=True, text=True, timeout=10)
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+def gravar(campo, valor):
+    if usa_arquivo:
+        seg(); linhas = [l for l in (open(ARQ).read().splitlines() if os.path.exists(ARQ) else []) if not l.startswith(campo + '=')]
+        fd = os.open(ARQ, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f: f.write('\n'.join(linhas + [f'{campo}={valor}']) + '\n')
+        return
+    subprocess.run(['secret-tool', 'store', f'--label=orq-hml-pessoal {CONTA} {campo}', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', campo],
+                   input=valor, text=True, check=True, timeout=30)
+
+def url_alvo(url=None):
+    u = url or P.get('HML_LOGIN_URL') or P.get('HML_URL')
+    if not u: sys.exit('hml: defina HML_URL (e HML_LOGIN_URL, se o login for em outra página) no orq.env')
+    ok, motivo = url_permitida(P, u)
+    if not ok: sys.exit(f'⛔ hml: {u} recusada ({motivo}). Credencial de teste só vai para localhost e homologação.')
+    return u
+
+def idade():
+    if not os.path.exists(META): return None
+    m = json.load(open(META)); h = (time.time() - m['ts']) / 3600
+    return f'{h:.0f} h' if h < 48 else f'{h / 24:.0f} dias'
+
+def ambiente(com_perfil=True):
+    u = P.get('HML_URL') or sys.exit('hml: defina HML_URL no orq.env'); url_alvo(u)
+    env = dict(os.environ, ORQ=O, HML_URL=u, HML_CHROME_ARGS=' '.join(ARGS_CHROME), HML_CHROME=CHROME or '')
+    env.update({k: v for k, v in P.items() if k.startswith('HML_LOGIN') or k == 'HML_PLAYWRIGHT'})
+    segredos = {}
+    for c in CAMPOS:
+        v = ler(c)
+        if v: env[f'HML_{c.upper()}'] = v; segredos[v] = f'«HML_{c.upper()}»'
+    copia = None
+    if com_perfil and os.path.isdir(PERFIL):  # cópia por execução: agentes em paralelo não disputam o mesmo perfil
+        copia = tempfile.mkdtemp(prefix='orq-hml-')
+        shutil.copytree(PERFIL, copia, dirs_exist_ok=True, symlinks=True,
+                        ignore=shutil.ignore_patterns('Singleton*', 'Cache', 'Code Cache', 'GPUCache', 'GrShaderCache', 'ShaderCache', 'DawnCache'))
+        env['HML_PERFIL'] = copia
+    return env, segredos, copia
+
+def rodar(comando, env, segredos, copia, guardar=None, timeout=None):
+    """Roda com a saída mascarada. Com guardar (lista), a saída vai para ela em vez da tela."""
+    estourou = []
+    try:
+        p = subprocess.Popen(comando, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
+                             start_new_session=timeout is not None)
+        if timeout:
+            relogio = threading.Timer(timeout, lambda: (estourou.append(1), os.killpg(p.pid, signal.SIGKILL)))
+            relogio.daemon = True; relogio.start()
+        for linha in p.stdout:
+            for v, t in segredos.items(): linha = linha.replace(v, t)
+            if guardar is None: sys.stdout.write(linha); sys.stdout.flush()
+            else: guardar.append(linha.rstrip('\n'))
+        rc = p.wait()
+        if timeout: relogio.cancel()
+        if estourou:
+            if guardar is not None: guardar.append(f'(o roteiro passou de {timeout} s e foi encerrado)')
+            return 12
+        return rc
+    finally:
+        if copia: shutil.rmtree(copia, ignore_errors=True)
+
+def porta_aberta(porta):
+    for h in ('127.0.0.1', '::1'):
+        try:
+            with socket.create_connection((h, porta), timeout=1): return True
+        except OSError: pass
+    return False
+
+RESULTADOS = {
+    0: 'NO AR · o login pelo formulário passou com uma sessão nova',
+    10: 'CREDENCIAL RECUSADA · a homologação respondeu, mas recusou a conta de teste. Peça ao usuário `hml guardar senha`',
+    11: 'FORA DO AR · o login não teve resposta, ou teve 5xx, mesmo depois da nova tentativa',
+    12: 'ROTEIRO FALHOU · a tela de login não é a esperada (seletores HML_LOGIN_* no orq.env, ou o roteiro)',
+    13: 'SERVIDOR LOCAL NÃO SUBIU · confira HML_SERVIDOR, HML_SERVIDOR_DIR e o log abaixo',
+    14: 'SEM LOGIN AUTOMÁTICO · não há usuário e senha guardados, e a sessão capturada falta ou venceu. Peça ao usuário `hml guardar usuario` e `senha` (ou `hml capturar`, se o login usa SSO ou MFA)',
+}
+
+def vivo(args):
+    def opcao(nome, padrao=None):
+        return args[args.index(nome) + 1] if nome in args and args.index(nome) + 1 < len(args) else padrao
+    pasta = opcao('--em') or P.get('HML_SERVIDOR_DIR') or P.get('CHECKOUT')
+    tentativas = int(opcao('--tentativas', '2'))
+    roteiro = P.get('HML_LOGIN_ROTEIRO') or os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hml-login.js')
+    roteiro = os.path.join(O, os.path.expanduser(roteiro))
+    if not os.path.exists(roteiro): sys.exit(f'hml vivo: {roteiro} não existe (HML_LOGIN_ROTEIRO no orq.env)')
+    comando = ['node', roteiro] if roteiro.endswith(('.js', '.cjs', '.mjs')) else [roteiro]
+    if comando[0] == 'node' and not shutil.which('node'): sys.exit('hml vivo: o roteiro de login precisa do Node.js (node no PATH)')
+    url = urlparse(P.get('HML_URL') or ''); url_alvo(P.get('HML_URL'))
+    porta = url.port or (443 if url.scheme == 'https' else 80)
+    local = url.hostname in ('localhost', '127.0.0.1', '::1')
+    servidor = trava = None; log = []; saida = []
+    if local and not porta_aberta(porta):
+        if not P.get('HML_SERVIDOR'):
+            print(f'hml vivo: nada responde em {url.netloc} e HML_SERVIDOR está vazio no orq.env'); fechar(13, saida)
+        if not pasta or not os.path.isdir(pasta):
+            sys.exit(f'hml vivo: pasta do servidor {pasta or "—"} não existe (use --em <worktree com as dependências> ou HML_SERVIDOR_DIR)')
+        os.makedirs(os.path.join(O, 'locks'), exist_ok=True)
+        trava = open(os.path.join(O, 'locks', f'porta-{porta}.lock'), 'w')
+        limite = time.time() + 60 * float(P.get('SLOT_ESPERA_MAX_MIN') or 15)
+        while True:
+            try: fcntl.flock(trava, fcntl.LOCK_EX | fcntl.LOCK_NB); break
+            except BlockingIOError:
+                if time.time() > limite: sys.exit(f'hml vivo: a porta {porta} ficou ocupada (trava locks/porta-{porta}.lock)')
+                time.sleep(2)
+        if not porta_aberta(porta):
+            registro = tempfile.NamedTemporaryFile('w+', prefix='orq-hml-servidor-', suffix='.log', delete=False)
+            servidor = subprocess.Popen(['bash', '-c', P['HML_SERVIDOR']], cwd=pasta, stdout=registro, stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL, start_new_session=True)
+            limite = time.time() + int(P.get('HML_SERVIDOR_ESPERA_S') or 300)
+            while not porta_aberta(porta) and servidor.poll() is None and time.time() < limite: time.sleep(2)
+            if not porta_aberta(porta):
+                registro.seek(0); log = registro.read().splitlines()[-12:]
+                parar(servidor); fechar(13, log)
+    try:
+        for i in range(tentativas):
+            saida = []
+            env, segredos, copia = ambiente(com_perfil=True); env['HML_PASTA'] = pasta or ''
+            rc = rodar(comando, env, segredos, copia, guardar=saida, timeout=int(P.get('HML_LOGIN_ESPERA_S') or 240))
+            if rc != 11 or i == tentativas - 1: break
+            print(f'hml vivo: sem resposta na tentativa {i + 1}; tento de novo em 20 s'); time.sleep(20)
+    finally:
+        if servidor: parar(servidor)
+        if trava: trava.close()
+    fechar(rc, saida)
+
+def parar(proc):
+    try:
+        os.killpg(proc.pid, signal.SIGTERM); proc.wait(timeout=15)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        try: os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError: pass
+
+def fechar(rc, linhas):
+    for l in linhas[-15:]: print('  ' + l)
+    print('Resultado: ' + RESULTADOS.get(rc, f'ROTEIRO FALHOU · saída {rc}'))
+    sys.exit(rc if rc in RESULTADOS else 12)
+
+a = sys.argv[1:]
+cmd = a[0] if a else ''
+if cmd == 'guardar' and len(a) == 2 and a[1] in CAMPOS:
+    if not sys.stdin.isatty(): sys.exit('hml guardar é para o usuário, num terminal: o valor não passa pelo agente')
+    v = getpass.getpass(f'{a[1]} da conta de TESTE de homologação (não use conta pessoal nem de produção): ')
+    if not v: sys.exit('hml: vazio, nada guardado')
+    gravar(a[1], v); print(f'hml: {a[1]} guardado no {"arquivo " + ARQ if usa_arquivo else "chaveiro"}')
+elif cmd == 'capturar':
+    u = url_alvo(a[a.index('--url') + 1] if '--url' in a else None)
+    if not CHROME: sys.exit('hml: Chrome não encontrado')
+    seg(); os.makedirs(PERFIL, mode=0o700, exist_ok=True)
+    print(f'hml: abrindo o Chrome em {u}. Entre com a conta de teste e feche a janela para gravar a sessão.')
+    subprocess.run([CHROME, f'--user-data-dir={PERFIL}', *ARGS_CHROME, '--new-window', u])
+    json.dump({'ts': time.time(), 'em': datetime.datetime.now().astimezone().isoformat(timespec='seconds'), 'url': u}, open(META, 'w'))
+    os.chmod(META, 0o600); print(f'hml: sessão gravada em {PERFIL}')
+elif cmd == 'checar':
+    u = P.get('HML_URL') or '—'; ok, motivo = url_permitida(P, u) if u != '—' else (False, 'HML_URL vazia')
+    print(f'URL de teste: {u} · {"permitida" if ok else "PROIBIDA"} ({motivo})')
+    print(f'Conta de teste: {CONTA} · cofre: {"arquivo " + ARQ if usa_arquivo else "chaveiro do sistema"}')
+    for c in CAMPOS: print(f'- {c}: {"guardado" if ler(c) else "—"}')
+    print(f'- sessão do navegador: {"capturada há " + idade() if idade() else "—"}')
+    tem = any(ler(c) for c in CAMPOS) or idade()
+    print('Resultado: ' + ('PRONTO' if ok and tem else 'FALTA CONFIGURAR'))
+    sys.exit(0 if ok and tem else 1)
+elif cmd == 'exec' and '--' in a:
+    comando = a[a.index('--') + 1:]
+    if not comando: sys.exit('uso: hml exec -- <comando...>')
+    sys.exit(rodar(comando, *ambiente()))
+elif cmd == 'vivo':
+    vivo(a[1:])
+elif cmd == 'esquecer':
+    for c in CAMPOS:
+        if not usa_arquivo: subprocess.run(['secret-tool', 'clear', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', c])
+    for f in (ARQ, META):
+        if os.path.exists(f): os.remove(f)
+    shutil.rmtree(PERFIL, ignore_errors=True); print('hml: credenciais e sessão apagadas')
+else:
+    sys.exit(open(os.path.realpath(__file__)).read().split('\nimport ')[0].replace('#!/usr/bin/env python3\n', ''))

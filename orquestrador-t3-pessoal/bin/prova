@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+# Grava a prova de um comando: cabeçalho (tipo, data, head, pasta, comando), a saída com segredos mascarados e o
+# código de saída. Mostra a saída no terminal também e sai com o mesmo código do comando.
+# Uso: <estado>/bin/prova <arquivo> [--tipo log|mutacao|medicao|requisicao] -- <comando...>
+#   Comando com pipe ou redirecionamento: -- bash -c '<comando>'
+import os, re, sys, time, subprocess, datetime
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from _orq import mascarar, params, estado, url_permitida
+a = sys.argv[1:]
+if '--' not in a or not a or a[0] == '--':
+    sys.exit('uso: prova <arquivo> [--tipo log|mutacao|medicao|requisicao] -- <comando...>')
+i = a.index('--'); antes, cmd = a[:i], a[i + 1:]
+arquivo, tipo = antes[0], 'log'
+if '--tipo' in antes:
+    tipo = antes[antes.index('--tipo') + 1]
+if tipo not in ('log', 'mutacao', 'medicao', 'requisicao') or not cmd:
+    sys.exit('prova: tipo inválido ou comando vazio')
+if tipo == 'requisicao':  # requisição só para localhost e homologação (AMBIENTE.md)
+    pr = params(estado())
+    for u in re.findall(r'(?i)\b(?:https?|wss?)://[^\s"\'<>]+', ' '.join(cmd)):
+        ok, motivo = url_permitida(pr, u)
+        if not ok:
+            sys.exit(f'⛔ prova: {u} recusada ({motivo}). Requisição só para localhost e homologação.')
+os.makedirs(os.path.dirname(os.path.abspath(arquivo)), exist_ok=True)
+head = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip() or '—'
+ansi = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
+inicio = time.time()
+with open(arquivo, 'w') as f:
+    f.write(f'# prova · {tipo} · {datetime.datetime.now().astimezone().isoformat(timespec="seconds")} · head {head}\n')
+    f.write(f'# pasta {os.getcwd()}\n# $ {mascarar(" ".join(cmd))}\n')
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    for linha in p.stdout:
+        sys.stdout.write(linha); sys.stdout.flush()
+        f.write(mascarar(ansi.sub('', linha)))
+    rc = p.wait()
+    f.write(f'\n# exit={rc} · {time.time() - inicio:.1f}s\n')
+print(f'prova: {arquivo} (exit={rc})', file=sys.stderr)
+sys.exit(rc)
