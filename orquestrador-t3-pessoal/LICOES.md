@@ -37,6 +37,10 @@ se o motivo deixou de existir, a lição sai.
   `ORIGEM` e passa a conflitar com ela nas mesmas linhas.
 - **`main`, `master` e `develop` ficam fora do fluxo**, até para PR. O fluxo termina na branch do épico; promover é
   do usuário.
+- **Usuário de teste guardado errado pelo terminal** (orquestração de trabalho, 2026-11-13): o `hml guardar` no
+  terminal aceitou um e-mail sem `@`, o login recusou na primeira tela e uma tarefa parou por horas. Digitar sem eco
+  escondia o erro. Agora o valor vem pelo cartão do T3 (`request_secret`, `delivery: "file"`), `hml checar` marca o
+  usuário sem `@`, e o `hml capturar` (SSO ou MFA) é rodado pelo orquestrador: o usuário não usa o terminal.
 - **Login de teste pedido a cada tarefa cansa o usuário.** A conta de teste fica no chaveiro e a sessão é capturada
   uma vez (`hml`). Sessão expirada vira um único pedido, não um por agente.
 - **Hook por worktree, não no repositório:** `core.hooksPath` na config da worktree do agente
@@ -96,5 +100,5 @@ se o motivo deixou de existir, a lição sai.
   sem bloquear nem chamar o usuário ([`AMBIENTE.md`](AMBIENTE.md)).
 - **A interface do T3 primeiro:** agentes como links `t3-thread://`, provas visuais na mensagem, backlog, gate, fim e
   `status` como página (`html_render`), o estado no título da thread e a thread marcada como não lida num pedido de
-  decisão. Agentes não abrem painel; segredos seguem no terminal, porque o `secretRef` do `request_secret` não chega
-  aos scripts.
+  decisão. Agentes não abrem painel; segredos vão pelo cartão do T3 (`request_secret` com `delivery: "file"`, ver a
+  lição de 2026-11-13).

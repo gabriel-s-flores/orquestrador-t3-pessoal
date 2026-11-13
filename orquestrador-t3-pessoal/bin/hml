@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # Autenticação de teste para os agentes, só em localhost e homologação (AMBIENTE.md). O usuário configura uma vez; os
 # agentes usam sem pedir nada. Produção não recebe credencial: a URL precisa estar em HOSTS_PERMITIDOS.
-# Uso: hml guardar <usuario|senha|token>   (usuário) pede o valor sem eco e guarda no chaveiro do sistema
-#      hml capturar [--url URL]            (usuário, uma vez por expiração) abre o Chrome no login; entre e feche a janela
+# Uso: hml guardar <usuario|senha|token> --arquivo <arq>   (agente) guarda o valor do cartão do T3 (request_secret,
+#                                          delivery "file") no chaveiro do sistema, sem mostrar o valor
+#      hml guardar <usuario|senha|token>   (usuário, num terminal) pede o valor sem eco e guarda no chaveiro
+#      hml capturar [--url URL]            (orquestrador, em segundo plano) abre o Chrome na tela do usuário, no login;
+#                                          ele entra e fecha a janela, e a sessão fica gravada
 #      hml checar                          o que está guardado (sem valores), idade da sessão, URL conferida
 #      hml exec -- <comando...>            roda o comando com HML_URL, HML_USUARIO, HML_SENHA, HML_TOKEN e HML_PERFIL
 #      hml vivo [--em <pasta>]             login de verdade (sessão nova): diz se a homologação está NO AR, se a credencial
@@ -105,11 +108,11 @@ def porta_aberta(porta):
 
 RESULTADOS = {
     0: 'NO AR · o login pelo formulário passou com uma sessão nova',
-    10: 'CREDENCIAL RECUSADA · a homologação respondeu, mas recusou a conta de teste. Peça ao usuário `hml guardar senha`',
+    10: 'CREDENCIAL RECUSADA · a homologação respondeu, mas recusou a conta de teste. Peça a senha pelo cartão do T3 e grave com `hml guardar senha --arquivo`',
     11: 'FORA DO AR · o login não teve resposta, ou teve 5xx, mesmo depois da nova tentativa',
     12: 'ROTEIRO FALHOU · a tela de login não é a esperada (seletores HML_LOGIN_* no orq.env, ou o roteiro)',
     13: 'SERVIDOR LOCAL NÃO SUBIU · confira HML_SERVIDOR, HML_SERVIDOR_DIR e o log abaixo',
-    14: 'SEM LOGIN AUTOMÁTICO · não há usuário e senha guardados, e a sessão capturada falta ou venceu. Peça ao usuário `hml guardar usuario` e `senha` (ou `hml capturar`, se o login usa SSO ou MFA)',
+    14: 'SEM LOGIN AUTOMÁTICO · não há usuário e senha guardados, e a sessão capturada falta ou venceu. Peça usuário e senha pelo cartão do T3 e grave com `hml guardar <campo> --arquivo` (ou rode `hml capturar` em segundo plano, se o login usa SSO ou MFA)',
 }
 
 def vivo(args):
@@ -174,9 +177,14 @@ def fechar(rc, linhas):
 
 a = sys.argv[1:]
 cmd = a[0] if a else ''
-if cmd == 'guardar' and len(a) == 2 and a[1] in CAMPOS:
-    if not sys.stdin.isatty(): sys.exit('hml guardar é para o usuário, num terminal: o valor não passa pelo agente')
-    v = getpass.getpass(f'{a[1]} da conta de TESTE de homologação (não use conta pessoal nem de produção): ')
+if cmd == 'guardar' and len(a) in (2, 4) and a[1] in CAMPOS and (len(a) == 2 or a[2] == '--arquivo'):
+    if len(a) == 4:  # arquivo entregue pelo cartão do T3 (request_secret, delivery "file"): o valor não passa pelo agente
+        try: v = open(a[3], encoding='utf-8').read().strip('\r\n')
+        except OSError as e: sys.exit(f'hml: não li o arquivo do cartão ({e.strerror}); peça o valor de novo')
+        if '\n' in v: sys.exit('hml: o valor tem mais de uma linha, nada guardado')
+    else:
+        if not sys.stdin.isatty(): sys.exit('hml guardar sem --arquivo é para o usuário, num terminal; o agente usa o cartão do T3 (request_secret) e --arquivo')
+        v = getpass.getpass(f'{a[1]} da conta de TESTE de homologação (não use conta pessoal nem de produção): ')
     if not v: sys.exit('hml: vazio, nada guardado')
     gravar(a[1], v); print(f'hml: {a[1]} guardado no {"arquivo " + ARQ if usa_arquivo else "chaveiro"}')
 elif cmd == 'capturar':
@@ -191,7 +199,9 @@ elif cmd == 'checar':
     u = P.get('HML_URL') or '—'; ok, motivo = url_permitida(P, u) if u != '—' else (False, 'HML_URL vazia')
     print(f'URL de teste: {u} · {"permitida" if ok else "PROIBIDA"} ({motivo})')
     print(f'Conta de teste: {CONTA} · cofre: {"arquivo " + ARQ if usa_arquivo else "chaveiro do sistema"}')
-    for c in CAMPOS: print(f'- {c}: {"guardado" if ler(c) else "—"}')
+    for c in CAMPOS:
+        v = ler(c); extra = (' (e-mail)' if '@' in v else ' (sem @: confira se o login pede e-mail)') if v and c == 'usuario' else ''
+        print(f'- {c}: {"guardado" + extra if v else "—"}')
     print(f'- sessão do navegador: {"capturada há " + idade() if idade() else "—"}')
     tem = any(ler(c) for c in CAMPOS) or idade()
     print('Resultado: ' + ('PRONTO' if ok and tem else 'FALTA CONFIGURAR'))

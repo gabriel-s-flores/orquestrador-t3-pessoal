@@ -15,18 +15,35 @@ Todo o código se consolida na branch do épico, por PR revisado.
 
 ## Autenticação sem pedir ao usuário
 
-O usuário configura uma vez, num terminal (o valor não passa pelo agente):
+O usuário entrega cada valor uma vez, pelo **cartão de segredo do T3** (`request_secret`), e o orquestrador o grava
+no chaveiro sem ver o valor. Um cartão por campo, nunca dois valores no mesmo:
 
-```bash
-<estado>/bin/hml guardar usuario      # conta de teste de homologação
-<estado>/bin/hml guardar senha
-<estado>/bin/hml guardar token        # se a API de homologação usa token
-<estado>/bin/hml capturar             # login com SSO ou MFA: abre o Chrome, ele entra e fecha a janela
-<estado>/bin/hml checar               # o que está guardado, sem mostrar valores
-<estado>/bin/hml vivo                 # login de verdade: a homologação está no ar e aceita a conta de teste?
+```text
+request_secret(label="Usuário da conta de teste <HML_CONTA>", delivery="file",
+               reason="Usuário da conta de TESTE de homologação (não use conta pessoal nem de produção)",
+               clientRequestId="<ORQ_ID>-hml-<conta>-usuario")
 ```
 
-- As credenciais ficam no chaveiro do sistema (serviço `orq-hml`), separadas por **conta de teste** (`HML_CONTA`,
+O retorno traz um arquivo que só vale dentro de um comando. Grave no mesmo comando, sem `cat` solto, `echo` ou
+`head` do arquivo:
+
+```bash
+ORQ=<estado> <estado>/bin/hml guardar usuario --arquivo "<arquivo do cartão>"
+ORQ=<estado> <estado>/bin/hml guardar senha   --arquivo "<arquivo do cartão>"   # e token, se a API usa token
+ORQ=<estado> <estado>/bin/hml checar          # o que está guardado, sem valores; usuário sem @ aparece marcado
+ORQ=<estado> <estado>/bin/hml vivo            # login de verdade: a homologação está no ar e aceita a conta?
+```
+
+- Login com SSO ou MFA que o roteiro não resolve: **o orquestrador** roda `ORQ=<estado> <estado>/bin/hml capturar`
+  em segundo plano (o Chrome abre na tela do usuário) e diz numa mensagem curta: "Abri o Chrome na sua tela: entre
+  com a conta de teste `<HML_CONTA>` e feche a janela quando aparecer a tela inicial". Espera o comando terminar
+  (`t3_background_wait`) e confere com `hml vivo`. Se a janela ficar aberta mais de 30 minutos, encerra o comando e
+  pede de novo no próximo heartbeat.
+- **O usuário nunca usa o terminal.** Valores vão pelo cartão do T3, login interativo pela janela do Chrome que o
+  orquestrador abre, e a confirmação pelo painel ou pela conversa. O `hml guardar` sem `--arquivo` (pede o valor
+  sem eco) fica só para quem pedir para usar o terminal.
+
+- As credenciais ficam no chaveiro do sistema (serviço `orq-hml-pessoal`), separadas por **conta de teste** (`HML_CONTA`,
   ex.: `meuapp-hml`): orquestrações do mesmo projeto usam a mesma conta e não pedem nada de novo. Sem chaveiro,
   ou com `HML_COFRE=arquivo`, ficam em `~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env`, com permissão 600.
 - A sessão capturada é um perfil do Chrome em `~/.local/share/orquestrador-t3-pessoal/hml/<conta>/chrome-hml/`. Ela vale até
@@ -71,11 +88,11 @@ não dizem se o login funciona, e o backend pode ter vários hosts, nem todos em
 | Resultado | O que quer dizer | O que fazer |
 |---|---|---|
 | `NO AR` (saída 0) | o login passou | seguir |
-| `CREDENCIAL RECUSADA` (10) | a homologação respondeu e recusou a conta | pedir ao usuário `hml guardar senha` (a senha mudou) |
+| `CREDENCIAL RECUSADA` (10) | a homologação respondeu e recusou a conta | pedir a senha nova pelo cartão do T3 e gravar com `hml guardar senha --arquivo` |
 | `FORA DO AR` (11) | o login não teve resposta, ou teve 5xx | tarefas com tela esperam; conferir de novo a cada heartbeat |
 | `ROTEIRO FALHOU` (12) | a tela de login não é a esperada | ajustar `HML_LOGIN_*` no `orq.env`, sem chamar o usuário |
 | `SERVIDOR LOCAL NÃO SUBIU` (13) | o app local não abriu a porta | ler o log mostrado; conferir `HML_SERVIDOR` e as dependências |
-| `SEM LOGIN AUTOMÁTICO` (14) | não há senha guardada, e a sessão capturada falta ou venceu | pedir `hml guardar` (ou `hml capturar`, com SSO ou MFA) |
+| `SEM LOGIN AUTOMÁTICO` (14) | não há senha guardada, e a sessão capturada falta ou venceu | pedir usuário e senha pelo cartão do T3 (ou o orquestrador roda `hml capturar`, com SSO ou MFA) |
 
 O roteiro padrão (`bin/hml-login.js`) usa os seletores `HML_LOGIN_USUARIO`, `HML_LOGIN_SENHA`, `HML_LOGIN_BOTAO` e
 `HML_LOGIN_OK`, e aceita login em duas etapas (e-mail, Avançar, senha). Um login diferente vai num roteiro próprio

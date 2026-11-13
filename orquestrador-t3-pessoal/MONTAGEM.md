@@ -94,11 +94,13 @@ $E/bin/guarda.py texto <.env do app local>    # nenhuma URL de produção no amb
 $E/bin/pr-provas.py --checar                  # gh autenticado
 ```
 
-**Projeto com login:** peça ao usuário para configurar a autenticação de teste **uma vez, num terminal**
-([`AMBIENTE.md`](AMBIENTE.md)): `hml guardar usuario`, `hml guardar senha` (e `token`, se houver), e `hml capturar` se
-o login usa SSO ou MFA. Os valores não passam pelo agente nem pelo chat. Mostre os comandos numa mensagem e espere pelo
-painel (`Já guardei (Recomendado)`, `Faço depois`); depois confira com `$E/bin/hml checar`. Não use `request_secret`
-aqui: o `secretRef` só serve às ferramentas do T3, não aos scripts ([`T3-V2.md`](T3-V2.md)).
+**Projeto com login:** peça a autenticação de teste **uma vez, pelo cartão de segredo do T3**
+([`AMBIENTE.md`](AMBIENTE.md)): um `request_secret` com `delivery: "file"` para o usuário, outro para a senha (e o
+`token`, se houver), cada um gravado com `$E/bin/hml guardar <campo> --arquivo <arquivo>` no mesmo comando. O valor
+não passa pelo agente nem pelo chat. Depois confira com `$E/bin/hml checar`: usuário marcado `sem @` num login por
+e-mail volta a ser pedido pelo cartão, antes do `hml vivo`. Com SSO ou MFA, você mesmo roda o `hml capturar` em
+segundo plano: o Chrome abre na tela do usuário, ele entra e fecha a janela. O usuário não usa o terminal em nenhum
+passo.
 
 Configure você mesmo o login para o `hml vivo`, sem perguntar ao usuário: abra a página de login, leia os campos e o
 botão, e grave no `orq.env` os seletores `HML_LOGIN_USUARIO`, `HML_LOGIN_SENHA`, `HML_LOGIN_BOTAO` (e
