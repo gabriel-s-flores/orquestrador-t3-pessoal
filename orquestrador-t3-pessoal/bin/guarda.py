@@ -11,9 +11,10 @@
 import os, re, sys, json, subprocess
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import estado, params, lista, branch_protegida, url_permitida, host_de
+from _orq import estado, params, lista, branch_protegida, url_permitida, host_de, WIN, bash_exe
 import fnmatch
 O = estado(); P = params(O)
+pasta_hooks = lambda: os.path.join(O, 'hooks').replace('\\', '/')
 ZERO = '0' * 40
 HOOKS = ['applypatch-msg', 'pre-applypatch', 'post-applypatch', 'pre-commit', 'pre-merge-commit', 'prepare-commit-msg',
          'commit-msg', 'post-commit', 'pre-rebase', 'post-checkout', 'post-merge', 'pre-push', 'pre-receive', 'update',
@@ -49,23 +50,27 @@ def instalar(wt):
     if git('config', '--get', 'extensions.worktreeConfig', cwd=top, check=False) != 'true':
         git('config', 'extensions.worktreeConfig', 'true', cwd=top)
     atual = git('config', '--worktree', '--get', 'core.hooksPath', cwd=top, check=False)
-    hooks = os.path.join(O, 'hooks')
+    hooks = pasta_hooks()
     if atual != hooks:
         original = git('config', '--get', 'core.hooksPath', cwd=top, check=False) or os.path.join(git('rev-parse', '--git-common-dir', cwd=top), 'hooks')
         if not os.path.isabs(original): original = os.path.join(top, original)
         git('config', '--worktree', 'orq.hooksOriginal', original, cwd=top)
         git('config', '--worktree', 'core.hooksPath', hooks, cwd=top)
     os.makedirs(hooks, exist_ok=True)
-    me = os.path.join(O, 'bin', 'guarda.py')
+    me = os.path.join(O, 'bin', 'guarda.py').replace('\\', '/')
+    # No Windows o git roda o hook pelo sh dele: caminhos com barras normais, o python deste comando (o "python3" do
+    # PATH pode ser o atalho da Loja) e fim de linha LF (CRLF quebra o script).
+    py = sys.executable.replace('\\', '/') if WIN else 'python3'
     for h in HOOKS:
         f = os.path.join(hooks, h)
-        open(f, 'w').write(f'#!/usr/bin/env bash\n# gerado por guarda.py: limites do fluxo + o hook original desta worktree\nexec python3 "{me}" hook {h} "$@"\n')
+        with open(f, 'w', newline='\n') as arq:
+            arq.write(f'#!/usr/bin/env bash\n# gerado por guarda.py: limites do fluxo + o hook original desta worktree\nexec "{py}" "{me}" hook {h} "$@"\n')
         os.chmod(f, 0o755)
     print(f'guarda: hook ativo em {top} (hooks originais: {git("config", "--worktree", "--get", "orq.hooksOriginal", cwd=top, check=False)})')
     return 0
 
 def instalado(wt):
-    ok = git('config', '--worktree', '--get', 'core.hooksPath', cwd=os.path.abspath(wt), check=False) == os.path.join(O, 'hooks')
+    ok = git('config', '--worktree', '--get', 'core.hooksPath', cwd=os.path.abspath(wt), check=False) == pasta_hooks()
     print('guarda: hook ' + ('ativo' if ok else 'AUSENTE') + f' em {wt}')
     return 0 if ok else 1
 
@@ -85,7 +90,8 @@ def hook(nome, args):
     original = git('config', '--get', 'orq.hooksOriginal', check=False)
     alvo = os.path.join(original, nome) if original else ''
     if alvo and os.path.isfile(alvo) and os.access(alvo, os.X_OK):
-        r = subprocess.run([alvo, *args], input=entrada, text=True)
+        # Windows: o hook é script sh sem extensão (husky inclusive); o CreateProcess não lê shebang, o bash do Git lê.
+        r = subprocess.run(([bash_exe()] if WIN else []) + [alvo, *args], input=entrada, text=True)
         sys.exit(r.returncode)
     sys.exit(0)
 

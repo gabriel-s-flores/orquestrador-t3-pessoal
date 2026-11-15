@@ -11,21 +11,79 @@
 #      hml vivo [--em <pasta>]             login de verdade (sessão nova): diz se a homologação está NO AR, se a credencial
 #                                          foi RECUSADA ou se está FORA DO AR. Sobe o servidor local se HML_URL for localhost
 #      hml esquecer                        apaga credenciais e sessão deste projeto
-# Cofre por conta de teste (HML_CONTA, padrão ORQ_ID): chaveiro (secret-tool, serviço orq-hml-pessoal) ou, com HML_COFRE=arquivo,
-# ~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env (600). A sessão do navegador fica na mesma pasta.
-import os, sys, json, time, fcntl, signal, threading, shutil, socket, getpass, tempfile, subprocess, datetime
+# Cofre por conta de teste (HML_CONTA, padrão ORQ_ID): chaveiro (secret-tool, serviço orq-hml-pessoal; no Windows, o
+# Gerenciador de Credenciais, alvos orq-hml-pessoal/<conta>/<campo>) ou, com HML_COFRE=arquivo,
+# ~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env (600; no Windows, %LOCALAPPDATA%\orquestrador-t3-pessoal\hml\<conta>).
+# A sessão do navegador fica na mesma pasta.
+import os, sys, json, time, threading, shutil, socket, getpass, tempfile, subprocess, datetime
 from urllib.parse import urlparse
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import estado, params, url_permitida
+from _orq import estado, params, url_permitida, WIN, travar, comando, bash_exe, novo_grupo, matar_arvore
 O = estado(); P = params(O)
 CONTA = P.get('HML_CONTA') or P.get('ORQ_ID') or os.path.basename(O)   # orquestrações do mesmo projeto compartilham
-SEG = os.path.join(os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')), 'orquestrador-t3-pessoal', 'hml', CONTA)
+DADOS = (os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')) if WIN else \
+        os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))
+SEG = os.path.join(DADOS, 'orquestrador-t3-pessoal', 'hml', CONTA)
 PERFIL = os.path.join(SEG, 'chrome-hml'); META = os.path.join(SEG, 'sessao.json')
 ARQ = os.path.join(SEG, 'hml.env'); CAMPOS = ('usuario', 'senha', 'token')
-CHROME = shutil.which('google-chrome-stable') or shutil.which('google-chrome') or shutil.which('chromium')
+
+def achar_chrome():
+    if P.get('HML_CHROME'):
+        return P['HML_CHROME']
+    achado = shutil.which('google-chrome-stable') or shutil.which('google-chrome') or shutil.which('chromium')
+    if achado or not WIN:
+        return achado
+    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)'), os.environ.get('LOCALAPPDATA')):
+        c = base and os.path.join(base, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        if c and os.path.isfile(c):
+            return c
+    return shutil.which('chrome')
+CHROME = achar_chrome()
 ARGS_CHROME = ['--password-store=basic', '--no-first-run', '--no-default-browser-check']
-usa_arquivo = P.get('HML_COFRE') == 'arquivo' or not shutil.which('secret-tool')
+usa_arquivo = P.get('HML_COFRE') == 'arquivo' or (not WIN and not shutil.which('secret-tool'))
+
+class Wincred:
+    """Gerenciador de Credenciais do Windows (o chaveiro do sistema lá): um alvo por conta e campo."""
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+        self.c, self.w = ctypes, wintypes
+        class FT(ctypes.Structure):
+            _fields_ = [('lo', wintypes.DWORD), ('hi', wintypes.DWORD)]
+        class CRED(ctypes.Structure):
+            _fields_ = [('Flags', wintypes.DWORD), ('Type', wintypes.DWORD), ('TargetName', wintypes.LPWSTR),
+                        ('Comment', wintypes.LPWSTR), ('LastWritten', FT), ('CredentialBlobSize', wintypes.DWORD),
+                        ('CredentialBlob', ctypes.POINTER(ctypes.c_ubyte)), ('Persist', wintypes.DWORD),
+                        ('AttributeCount', wintypes.DWORD), ('Attributes', ctypes.c_void_p),
+                        ('TargetAlias', wintypes.LPWSTR), ('UserName', wintypes.LPWSTR)]
+        self.CRED = CRED
+        self.api = ctypes.WinDLL('advapi32', use_last_error=True)
+        self.api.CredReadW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.POINTER(CRED))]
+        self.api.CredWriteW.argtypes = [ctypes.POINTER(CRED), wintypes.DWORD]
+        self.api.CredDeleteW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
+        self.api.CredFree.argtypes = [ctypes.c_void_p]
+    def alvo(self, campo):
+        return f'orq-hml-pessoal/{CONTA}/{campo}'
+    def ler(self, campo):
+        p = self.c.POINTER(self.CRED)()
+        if not self.api.CredReadW(self.alvo(campo), 1, 0, self.c.byref(p)):
+            return None
+        try:
+            return self.c.string_at(p.contents.CredentialBlob, p.contents.CredentialBlobSize).decode('utf-8') or None
+        finally:
+            self.api.CredFree(p)
+    def gravar(self, campo, valor):
+        dados = valor.encode('utf-8')
+        buf = (self.c.c_ubyte * len(dados)).from_buffer_copy(dados)
+        cr = self.CRED(Type=1, TargetName=self.alvo(campo), CredentialBlobSize=len(dados), Persist=2,
+                       CredentialBlob=self.c.cast(buf, self.c.POINTER(self.c.c_ubyte)), UserName=f'{CONTA}-{campo}',
+                       Comment='orquestrador-t3-pessoal: conta de TESTE de homologação')
+        if not self.api.CredWriteW(self.c.byref(cr), 0):
+            sys.exit(f'hml: o Gerenciador de Credenciais recusou a gravação (erro {self.c.get_last_error()})')
+    def apagar(self, campo):
+        self.api.CredDeleteW(self.alvo(campo), 1, 0)
+WINCRED = Wincred() if WIN and not usa_arquivo else None
 
 def seg():
     os.makedirs(SEG, mode=0o700, exist_ok=True); os.chmod(SEG, 0o700)
@@ -37,6 +95,7 @@ def ler(campo):
                 k, _, v = l.rstrip('\n').partition('=')
                 if k == campo: return v
         return None
+    if WINCRED: return WINCRED.ler(campo)
     r = subprocess.run(['secret-tool', 'lookup', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', campo], capture_output=True, text=True, timeout=10)
     return r.stdout if r.returncode == 0 and r.stdout else None
 
@@ -46,6 +105,7 @@ def gravar(campo, valor):
         fd = os.open(ARQ, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as f: f.write('\n'.join(linhas + [f'{campo}={valor}']) + '\n')
         return
+    if WINCRED: return WINCRED.gravar(campo, valor)
     subprocess.run(['secret-tool', 'store', f'--label=orq-hml-pessoal {CONTA} {campo}', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', campo],
                    input=valor, text=True, check=True, timeout=30)
 
@@ -77,14 +137,15 @@ def ambiente(com_perfil=True):
         env['HML_PERFIL'] = copia
     return env, segredos, copia
 
-def rodar(comando, env, segredos, copia, guardar=None, timeout=None):
+def rodar(cmd, env, segredos, copia, guardar=None, timeout=None):
     """Roda com a saída mascarada. Com guardar (lista), a saída vai para ela em vez da tela."""
     estourou = []
     try:
-        p = subprocess.Popen(comando, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
-                             start_new_session=timeout is not None)
+        grupo = novo_grupo() if timeout is not None else {}
+        p = subprocess.Popen(comando(cmd), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
+                             encoding='utf-8', **grupo)
         if timeout:
-            relogio = threading.Timer(timeout, lambda: (estourou.append(1), os.killpg(p.pid, signal.SIGKILL)))
+            relogio = threading.Timer(timeout, lambda: (estourou.append(1), matar_arvore(p.pid, forca=True)))
             relogio.daemon = True; relogio.start()
         for linha in p.stdout:
             for v, t in segredos.items(): linha = linha.replace(v, t)
@@ -123,8 +184,8 @@ def vivo(args):
     roteiro = P.get('HML_LOGIN_ROTEIRO') or os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hml-login.js')
     roteiro = os.path.join(O, os.path.expanduser(roteiro))
     if not os.path.exists(roteiro): sys.exit(f'hml vivo: {roteiro} não existe (HML_LOGIN_ROTEIRO no orq.env)')
-    comando = ['node', roteiro] if roteiro.endswith(('.js', '.cjs', '.mjs')) else [roteiro]
-    if comando[0] == 'node' and not shutil.which('node'): sys.exit('hml vivo: o roteiro de login precisa do Node.js (node no PATH)')
+    roteiro_cmd = ['node', roteiro] if roteiro.endswith(('.js', '.cjs', '.mjs')) else [roteiro]
+    if roteiro_cmd[0] == 'node' and not shutil.which('node'): sys.exit('hml vivo: o roteiro de login precisa do Node.js (node no PATH)')
     url = urlparse(P.get('HML_URL') or ''); url_alvo(P.get('HML_URL'))
     porta = url.port or (443 if url.scheme == 'https' else 80)
     local = url.hostname in ('localhost', '127.0.0.1', '::1')
@@ -135,17 +196,16 @@ def vivo(args):
         if not pasta or not os.path.isdir(pasta):
             sys.exit(f'hml vivo: pasta do servidor {pasta or "—"} não existe (use --em <worktree com as dependências> ou HML_SERVIDOR_DIR)')
         os.makedirs(os.path.join(O, 'locks'), exist_ok=True)
-        trava = open(os.path.join(O, 'locks', f'porta-{porta}.lock'), 'w')
         limite = time.time() + 60 * float(P.get('SLOT_ESPERA_MAX_MIN') or 15)
         while True:
-            try: fcntl.flock(trava, fcntl.LOCK_EX | fcntl.LOCK_NB); break
-            except BlockingIOError:
-                if time.time() > limite: sys.exit(f'hml vivo: a porta {porta} ficou ocupada (trava locks/porta-{porta}.lock)')
-                time.sleep(2)
+            trava = travar(os.path.join(O, 'locks', f'porta-{porta}.lock'))
+            if trava: break
+            if time.time() > limite: sys.exit(f'hml vivo: a porta {porta} ficou ocupada (trava locks/porta-{porta}.lock)')
+            time.sleep(2)
         if not porta_aberta(porta):
             registro = tempfile.NamedTemporaryFile('w+', prefix='orq-hml-servidor-', suffix='.log', delete=False)
-            servidor = subprocess.Popen(['bash', '-c', P['HML_SERVIDOR']], cwd=pasta, stdout=registro, stderr=subprocess.STDOUT,
-                                        stdin=subprocess.DEVNULL, start_new_session=True)
+            servidor = subprocess.Popen([bash_exe(), '-c', P['HML_SERVIDOR']], cwd=pasta, stdout=registro, stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL, **novo_grupo())
             limite = time.time() + int(P.get('HML_SERVIDOR_ESPERA_S') or 300)
             while not porta_aberta(porta) and servidor.poll() is None and time.time() < limite: time.sleep(2)
             if not porta_aberta(porta):
@@ -155,7 +215,7 @@ def vivo(args):
         for i in range(tentativas):
             saida = []
             env, segredos, copia = ambiente(com_perfil=True); env['HML_PASTA'] = pasta or ''
-            rc = rodar(comando, env, segredos, copia, guardar=saida, timeout=int(P.get('HML_LOGIN_ESPERA_S') or 240))
+            rc = rodar(roteiro_cmd, env, segredos, copia, guardar=saida, timeout=int(P.get('HML_LOGIN_ESPERA_S') or 240))
             if rc != 11 or i == tentativas - 1: break
             print(f'hml vivo: sem resposta na tentativa {i + 1}; tento de novo em 20 s'); time.sleep(20)
     finally:
@@ -165,9 +225,9 @@ def vivo(args):
 
 def parar(proc):
     try:
-        os.killpg(proc.pid, signal.SIGTERM); proc.wait(timeout=15)
+        matar_arvore(proc.pid); proc.wait(timeout=15)
     except (ProcessLookupError, subprocess.TimeoutExpired):
-        try: os.killpg(proc.pid, signal.SIGKILL)
+        try: matar_arvore(proc.pid, forca=True)
         except ProcessLookupError: pass
 
 def fechar(rc, linhas):
@@ -186,7 +246,7 @@ if cmd == 'guardar' and len(a) in (2, 4) and a[1] in CAMPOS and (len(a) == 2 or 
         if not sys.stdin.isatty(): sys.exit('hml guardar sem --arquivo é para o usuário, num terminal; o agente usa o cartão do T3 (request_secret) e --arquivo')
         v = getpass.getpass(f'{a[1]} da conta de TESTE de homologação (não use conta pessoal nem de produção): ')
     if not v: sys.exit('hml: vazio, nada guardado')
-    gravar(a[1], v); print(f'hml: {a[1]} guardado no {"arquivo " + ARQ if usa_arquivo else "chaveiro"}')
+    gravar(a[1], v); print(f'hml: {a[1]} guardado no {"arquivo " + ARQ if usa_arquivo else ("Gerenciador de Credenciais do Windows" if WINCRED else "chaveiro")}')
 elif cmd == 'capturar':
     u = url_alvo(a[a.index('--url') + 1] if '--url' in a else None)
     if not CHROME: sys.exit('hml: Chrome não encontrado')
@@ -198,7 +258,7 @@ elif cmd == 'capturar':
 elif cmd == 'checar':
     u = P.get('HML_URL') or '—'; ok, motivo = url_permitida(P, u) if u != '—' else (False, 'HML_URL vazia')
     print(f'URL de teste: {u} · {"permitida" if ok else "PROIBIDA"} ({motivo})')
-    print(f'Conta de teste: {CONTA} · cofre: {"arquivo " + ARQ if usa_arquivo else "chaveiro do sistema"}')
+    print(f'Conta de teste: {CONTA} · cofre: {"arquivo " + ARQ if usa_arquivo else ("Gerenciador de Credenciais do Windows" if WINCRED else "chaveiro do sistema")}')
     for c in CAMPOS:
         v = ler(c); extra = (' (e-mail)' if '@' in v else ' (sem @: confira se o login pede e-mail)') if v and c == 'usuario' else ''
         print(f'- {c}: {"guardado" + extra if v else "—"}')
@@ -207,14 +267,15 @@ elif cmd == 'checar':
     print('Resultado: ' + ('PRONTO' if ok and tem else 'FALTA CONFIGURAR'))
     sys.exit(0 if ok and tem else 1)
 elif cmd == 'exec' and '--' in a:
-    comando = a[a.index('--') + 1:]
-    if not comando: sys.exit('uso: hml exec -- <comando...>')
-    sys.exit(rodar(comando, *ambiente()))
+    alvo_cmd = a[a.index('--') + 1:]
+    if not alvo_cmd: sys.exit('uso: hml exec -- <comando...>')
+    sys.exit(rodar(alvo_cmd, *ambiente()))
 elif cmd == 'vivo':
     vivo(a[1:])
 elif cmd == 'esquecer':
     for c in CAMPOS:
-        if not usa_arquivo: subprocess.run(['secret-tool', 'clear', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', c])
+        if WINCRED: WINCRED.apagar(c)
+        elif not usa_arquivo: subprocess.run(['secret-tool', 'clear', 'service', 'orq-hml-pessoal', 'orq', CONTA, 'campo', c])
     for f in (ARQ, META):
         if os.path.exists(f): os.remove(f)
     shutil.rmtree(PERFIL, ignore_errors=True); print('hml: credenciais e sessão apagadas')

@@ -1,32 +1,25 @@
 #!/usr/bin/env bash
 # Quantos agentes cabem agora sem travar a máquina. Lê load, memória, swap e PSI (/proc/pressure) e os agentes
 # ativos registrados. Imprime uma linha de leitura e AGENTES=, VAGAS=, ESTADO=ok|apertado|critico e MOTIVO=.
+# No Windows não há load nem PSI: o load vem da CPU ocupada × núcleos + a fila do processador (_orq.metricas).
 # Uso: <estado>/bin/capacidade.sh            leitura para o despacho
 #      <estado>/bin/capacidade.sh --sugerir  valores de paralelismo para o orq.env desta máquina
 if [ "${1:-}" != "--sugerir" ]; then . "$(dirname "$0")/_comum.sh"; fi
+export PYTHONUTF8=1
+ORQ_BIN=$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd)) \
 ATIVOS=$("${ORQ:-.}/bin/agentes.py" ativos --contar 2>/dev/null || echo 0) MODO="${1:-}" exec python3 - <<'PY'
-import os, math
+import os, sys, math
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.environ['ORQ_BIN'])
+from _orq import metricas
 E = os.environ
 def num(k, padrao):
     try: return float(E.get(k, '') or padrao)
     except ValueError: return float(padrao)
-mem = {}
-for l in open('/proc/meminfo'):
-    k, v = l.split(':', 1); mem[k] = int(v.split()[0]) / 1048576  # GB
-total, livre = mem['MemTotal'], mem['MemAvailable']
-swap_usada = mem.get('SwapTotal', 0) - mem.get('SwapFree', 0)
-cpus = os.cpu_count() or 1
-load1, load5 = (float(x) for x in open('/proc/loadavg').read().split()[:2])
-def psi(nome):
-    try:
-        r = {}
-        for l in open(f'/proc/pressure/{nome}'):
-            tipo, *campos = l.split()
-            r[tipo] = float(dict(c.split('=') for c in campos)['avg10'])
-        return r.get('some', 0.0), r.get('full', 0.0)
-    except OSError:
-        return 0.0, 0.0
-cpu_some, _ = psi('cpu'); mem_some, mem_full = psi('memory'); io_some, _ = psi('io')
+M = metricas()
+total, livre, swap_usada, cpus = M['total'], M['livre'], M['swap'], M['cpus']
+load1, load5 = M['load1'], M['load5']
+cpu_some, mem_some, mem_full, io_some = M['cpu_some'], M['mem_some'], M['mem_full'], M['io_some']
 
 if E.get('MODO') == '--sugerir':
     print('# sugestão para esta máquina:', cpus, 'CPUs,', round(total), 'GB')
@@ -58,9 +51,10 @@ estado = 'critico' if motivos_crit else ('apertado' if motivos else 'ok')
 vagas = 0 if estado != 'ok' else max(0, min(maxag - ativos, vagas_mem, int(num('DESPACHO_POR_ITERACAO', 2))))
 if estado == 'ok' and vagas == 0:
     motivos.append(f'teto de agentes {ativos}/{maxag}')
+psi = (f'PSI cpu {cpu_some:.0f}% mem {mem_some:.0f}%/{mem_full:.0f}% io {io_some:.0f}%' if M['psi']
+       else (f'CPU ocupada {M["cpu_uso"]:.0f}% · sem PSI no Windows' if 'cpu_uso' in M else 'sem PSI'))
 print(f'CPU {cpus} · load {load1:.2f}/{load5:.2f} (teto {carga_max:g}, crítico {carga_crit:g}) · memória livre {livre:.1f} '
-      f'de {total:.0f} GB (reserva {reserva:g}) · swap {swap_usada:.1f} GB · PSI cpu {cpu_some:.0f}% '
-      f'mem {mem_some:.0f}%/{mem_full:.0f}% io {io_some:.0f}%')
+      f'de {total:.0f} GB (reserva {reserva:g}) · swap {swap_usada:.1f} GB · {psi}')
 print(f'AGENTES={ativos}/{maxag}')
 print(f'VAGAS={vagas}')
 print(f'ESTADO={estado}')

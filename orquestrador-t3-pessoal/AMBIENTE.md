@@ -43,9 +43,10 @@ ORQ=<estado> <estado>/bin/hml vivo            # login de verdade: a homologaçã
   orquestrador abre, e a confirmação pelo painel ou pela conversa. O `hml guardar` sem `--arquivo` (pede o valor
   sem eco) fica só para quem pedir para usar o terminal.
 
-- As credenciais ficam no chaveiro do sistema (serviço `orq-hml-pessoal`), separadas por **conta de teste** (`HML_CONTA`,
+- As credenciais ficam no chaveiro do sistema (serviço `orq-hml-pessoal`; no Windows, o Gerenciador de Credenciais), separadas por **conta de teste** (`HML_CONTA`,
   ex.: `meuapp-hml`): orquestrações do mesmo projeto usam a mesma conta e não pedem nada de novo. Sem chaveiro,
-  ou com `HML_COFRE=arquivo`, ficam em `~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env`, com permissão 600.
+  ou com `HML_COFRE=arquivo`, ficam em `~/.local/share/orquestrador-t3-pessoal/hml/<conta>/hml.env`, com permissão 600
+  (no Windows, em `%LOCALAPPDATA%\orquestrador-t3-pessoal\hml\<conta>\`, [`WINDOWS.md`](WINDOWS.md)).
 - A sessão capturada é um perfil do Chrome em `~/.local/share/orquestrador-t3-pessoal/hml/<conta>/chrome-hml/`. Ela vale até
   o sistema expirar o login.
 - Os agentes rodam tudo o que precisa de login com `<estado>/bin/hml exec -- <comando>`, que:

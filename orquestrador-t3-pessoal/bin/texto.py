@@ -9,6 +9,10 @@
 # Saída: uma linha por achado (GRAVE ou LEVE) e o resultado. Código 1 = há achado grave (ou leve, com --estrito).
 # Achado é candidato: termo de domínio, citação e nome próprio ficam. Código, URLs e trechos entre aspas são ignorados.
 import json, re, sys, unicodedata
+import os
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import _orq  # noqa: F401 (no Windows, liga o modo UTF-8: o texto e a saída têm acentos)
 
 G, L = 'GRAVE', 'LEVE'
 CATALOGO = {

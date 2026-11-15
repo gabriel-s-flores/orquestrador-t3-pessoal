@@ -2,11 +2,11 @@
 # Grava a prova de um comando: cabeçalho (tipo, data, head, pasta, comando), a saída com segredos mascarados e o
 # código de saída. Mostra a saída no terminal também e sai com o mesmo código do comando.
 # Uso: <estado>/bin/prova <arquivo> [--tipo log|mutacao|medicao|requisicao] -- <comando...>
-#   Comando com pipe ou redirecionamento: -- bash -c '<comando>'
+#   Comando com pipe ou redirecionamento: -- bash -c '<comando>' (no Windows, o bash do Git)
 import os, re, sys, time, subprocess, datetime
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import mascarar, params, estado, url_permitida
+from _orq import mascarar, params, estado, url_permitida, comando
 a = sys.argv[1:]
 if '--' not in a or not a or a[0] == '--':
     sys.exit('uso: prova <arquivo> [--tipo log|mutacao|medicao|requisicao] -- <comando...>')
@@ -26,10 +26,10 @@ os.makedirs(os.path.dirname(os.path.abspath(arquivo)), exist_ok=True)
 head = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip() or '—'
 ansi = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
 inicio = time.time()
-with open(arquivo, 'w') as f:
+with open(arquivo, 'w', newline='\n') as f:
     f.write(f'# prova · {tipo} · {datetime.datetime.now().astimezone().isoformat(timespec="seconds")} · head {head}\n')
     f.write(f'# pasta {os.getcwd()}\n# $ {mascarar(" ".join(cmd))}\n')
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    p = subprocess.Popen(comando(cmd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
     for linha in p.stdout:
         sys.stdout.write(linha); sys.stdout.flush()
         f.write(mascarar(ansi.sub('', linha)))

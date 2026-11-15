@@ -8,7 +8,7 @@
 import sys, os
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import estado, params, preencher, Entrada, spec_de, alvo_tarefa, bloco
+from _orq import estado, params, preencher, Entrada, spec_de, alvo_tarefa, bloco, nota_windows
 O = estado(); P = params(O)
 a = sys.argv[1:]
 alvo = None
@@ -29,7 +29,7 @@ try:
 except SystemExit as x:  # orq.env antigo, sem os alvos por classe: o brief sai sem o trecho do modelo
     print(f'aviso: {x}; brief sem o trecho do modelo', file=sys.stderr); prov = modelo = effort = ''
 out = preencher(open(f'{O}/modelos/brief-implementador.md').read(), {
-    'BLOCO_MODELO': bloco(O, 'impl', modelo) if modelo else '', 'MODELO': modelo or '—', 'EFFORT': effort or '—',
+    'BLOCO_MODELO': '\n\n'.join(x for x in (nota_windows(), bloco(O, 'impl', modelo) if modelo else '') if x), 'MODELO': modelo or '—', 'EFFORT': effort or '—',
     'ID': tid, 'TITULO': e.titulo, 'FASE': e.fase,
     'ISSUE': e.linha('Issue') or '—', 'ORIGEM': e.linha('Origem') or '—', 'CLASSE': e.classe() or 'M',
     'DEPENDENCIAS': e.linha('Depende de') or '—',

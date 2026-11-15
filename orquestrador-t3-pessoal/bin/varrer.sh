@@ -29,7 +29,7 @@ for l in open(f'{O}/PAINEL.md'):
     rev = f'{d}/revisao-c{n}.md'
     if st.startswith('em revisão') and os.path.exists(rev):
         cab = ' · '.join(x.strip() for x in open(rev).read().splitlines()[1:3])
-        r = subprocess.run([f'{O}/bin/provas.py', tid, n], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, f'{O}/bin/provas.py', tid, n], capture_output=True, text=True)
         prov = (re.findall(r'^Resultado: (\w+)', r.stdout, re.M) or ['sem manifesto'])[0]
         sinais.append(f'REVISÃO c{n} ESCRITA ({cab} · provas {prov}) — processar já')
     if os.path.exists(f'{d}/revisao-c{n}.parcial.md'):

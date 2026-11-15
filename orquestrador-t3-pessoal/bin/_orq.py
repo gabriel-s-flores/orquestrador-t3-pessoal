@@ -1,11 +1,37 @@
 # Incluído pelos scripts Python do orquestrador: pasta de estado, parâmetros de orq.env e entradas do BACKLOG.
-import os, re, sys, shlex
+# No Windows também: modo UTF-8, caminhos com barras normais, o bash do Git, travas, árvore de processos e a carga da
+# máquina (WINDOWS.md).
+import os, re, sys, shlex, shutil, subprocess
+
+WIN = os.name == 'nt'
+if WIN and not sys.flags.utf8_mode:
+    # Os arquivos de estado são UTF-8; sem o modo UTF-8 o Python do Windows lê e escreve em cp1252. Roda o mesmo
+    # script de novo com -X utf8 (uma vez só). Script vindo do stdin (python3 -) não pode ser relido: só ajusta o stdio.
+    if sys.argv and sys.argv[0] not in ('', '-', '-c') and not os.environ.get('ORQ_UTF8_REEXEC'):
+        os.environ['ORQ_UTF8_REEXEC'] = '1'; os.environ['PYTHONUTF8'] = '1'
+        try:
+            _rc = subprocess.call([sys.executable, '-X', 'utf8', *sys.orig_argv[1:]])
+        except KeyboardInterrupt:
+            _rc = 130
+        sys.exit(_rc)
+    for _s in (sys.stdout, sys.stderr):
+        try: _s.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError): pass
+
+def caminho(p):
+    """No Windows, /c/x vira C:/x e as barras ficam normais: o Git Bash come as invertidas fora de aspas."""
+    if WIN and p:
+        m = re.match(r'^/([a-zA-Z])(/|$)', p)
+        if m:
+            p = m.group(1).upper() + ':/' + p[3:]
+        p = p.replace('\\', '/')
+    return p
 
 def estado():
     if os.environ.get('ORQ'):
-        return os.environ['ORQ']
+        return caminho(os.environ['ORQ'])
     # <estado>/bin é um link para a pasta da skill: use o caminho chamado, sem resolver o link.
-    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), '..'))
+    return caminho(os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), '..')))
 
 def params(orq):
     p = {}
@@ -211,3 +237,168 @@ def bloco(orq, papel, modelo):
             if os.path.exists(f):
                 return open(f).read().strip()
     return ''
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Portabilidade Linux × Windows (WINDOWS.md)
+
+def bash_exe():
+    """O bash do Git for Windows. No PowerShell e no PATH do Windows, "bash" costuma ser o do WSL: nunca use esse."""
+    if not WIN:
+        return shutil.which('bash') or '/bin/bash'
+    cands = [os.environ.get('ORQ_BASH')]
+    git = shutil.which('git')
+    if git:  # ...\Git\cmd\git.exe ou ...\Git\mingw64\bin\git.exe
+        d = os.path.dirname(os.path.dirname(git))
+        cands += [os.path.join(d, 'bin', 'bash.exe'), os.path.join(os.path.dirname(d), 'bin', 'bash.exe'),
+                  os.path.join(d, 'usr', 'bin', 'bash.exe')]
+    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramW6432'), os.environ.get('LOCALAPPDATA') and
+                 os.path.join(os.environ['LOCALAPPDATA'], 'Programs')):
+        if base:
+            cands.append(os.path.join(base, 'Git', 'bin', 'bash.exe'))
+    for c in cands:
+        if c and os.path.isfile(c) and 'windowsapps' not in c.lower() and 'system32' not in c.lower():
+            return c
+    return shutil.which('bash') or 'bash'
+
+def comando(cmd):
+    """Lista pronta para o subprocess. No Windows o CreateProcess não lê shebang nem acha .cmd sem a extensão:
+    resolve npx → npx.cmd, script sem extensão pelo shebang (python, node, bash) e "bash" → o bash do Git."""
+    cmd = list(cmd)
+    if not WIN or not cmd:
+        return cmd
+    c0, resto = cmd[0], cmd[1:]
+    if not os.path.dirname(c0) and c0.lower() in ('bash', 'sh', 'bash.exe', 'sh.exe'):
+        return [bash_exe(), *resto]
+    achado = c0 if (os.path.dirname(c0) and os.path.isfile(c0)) else shutil.which(c0)
+    if not achado:
+        return cmd
+    ext = os.path.splitext(achado)[1].lower()
+    if ext in ('.exe', '.com', '.bat', '.cmd'):
+        return [achado, *resto]
+    if ext == '.ps1':
+        return ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', achado, *resto]
+    if ext == '.py':
+        return [sys.executable, achado, *resto]
+    if ext in ('.js', '.cjs', '.mjs'):
+        return [shutil.which('node') or 'node', achado, *resto]
+    try:
+        primeira = open(achado, 'rb').readline().decode('utf-8', 'replace')
+    except OSError:
+        return cmd
+    if primeira.startswith('#!'):
+        if 'python' in primeira:
+            return [sys.executable, achado, *resto]
+        if 'node' in primeira:
+            return [shutil.which('node') or 'node', achado, *resto]
+        return [bash_exe(), achado, *resto]
+    return [achado, *resto]
+
+def travar(arquivo):
+    """Trava exclusiva sem esperar. Devolve o arquivo aberto (segure-o enquanto precisar) ou None se ocupada.
+    O sistema solta a trava quando o processo morre, nos dois sistemas."""
+    os.makedirs(os.path.dirname(os.path.abspath(arquivo)), exist_ok=True)
+    f = open(arquivo, 'a+')
+    try:
+        if WIN:
+            import msvcrt
+            f.seek(0); msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f
+    except OSError:
+        f.close()
+        return None
+
+def novo_grupo():
+    """kwargs do Popen para o filho ficar num grupo próprio (para matar_arvore)."""
+    return {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if WIN else {'start_new_session': True}
+
+def matar_arvore(pid, forca=False):
+    """Encerra o processo e os filhos dele. No Windows não há TERM para programa de console: é sempre taskkill /F."""
+    if WIN:
+        r = subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)], capture_output=True)
+        if r.returncode not in (0, 128, 255):
+            raise ProcessLookupError(pid)
+    else:
+        import signal
+        os.killpg(pid, signal.SIGKILL if forca else signal.SIGTERM)
+
+def _psi(nome):
+    try:
+        r = {}
+        for l in open(f'/proc/pressure/{nome}'):
+            tipo, *campos = l.split()
+            r[tipo] = float(dict(c.split('=') for c in campos)['avg10'])
+        return r.get('some', 0.0), r.get('full', 0.0)
+    except OSError:
+        return 0.0, 0.0
+
+def metricas(amostra_s=1.0):
+    """Carga da máquina: memória total e livre e swap em GB, CPUs, load de 1 e 5 min e PSI (0 onde não há).
+    No Windows não há load nem PSI: o load é a CPU ocupada × núcleos + a fila do processador (como o Cygwin faz),
+    medida numa amostra de amostra_s segundos; o de 5 min repete o de 1 min."""
+    cpus = os.cpu_count() or 1
+    m = {'cpus': cpus, 'psi': False, 'cpu_some': 0.0, 'mem_some': 0.0, 'mem_full': 0.0, 'io_some': 0.0}
+    if not WIN:
+        mem = {}
+        for l in open('/proc/meminfo'):
+            k, v = l.split(':', 1); mem[k] = int(v.split()[0]) / 1048576  # GB
+        m['total'], m['livre'] = mem['MemTotal'], mem.get('MemAvailable', mem.get('MemFree', 0))
+        m['swap'] = mem.get('SwapTotal', 0) - mem.get('SwapFree', 0)
+        m['load1'], m['load5'] = (float(x) for x in open('/proc/loadavg').read().split()[:2])
+        if os.path.isdir('/proc/pressure'):
+            m['psi'] = True
+            m['cpu_some'], _ = _psi('cpu'); m['mem_some'], m['mem_full'] = _psi('memory'); m['io_some'], _ = _psi('io')
+        return m
+    import ctypes, time
+    from ctypes import wintypes
+    GB = 1024 ** 3
+    class MEMSTAT(ctypes.Structure):
+        _fields_ = [('dwLength', wintypes.DWORD), ('dwMemoryLoad', wintypes.DWORD)] + \
+                   [(n, ctypes.c_ulonglong) for n in ('total', 'livre', 'pf_total', 'pf_livre', 'v_total', 'v_livre', 'v_ext')]
+    st = MEMSTAT(); st.dwLength = ctypes.sizeof(MEMSTAT)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+    m['total'], m['livre'] = st.total / GB, st.livre / GB
+    try:
+        import psutil
+        m['swap'] = psutil.swap_memory().used / GB
+    except Exception:  # sem psutil: o que o arquivo de paginação guarda além da RAM em uso
+        m['swap'] = max(0, (st.pf_total - st.pf_livre) - (st.total - st.livre)) / GB
+    def tempos():
+        ft = [wintypes.FILETIME() for _ in range(3)]
+        ctypes.windll.kernel32.GetSystemTimes(*(ctypes.byref(x) for x in ft))
+        return [(x.dwHighDateTime << 32) | x.dwLowDateTime for x in ft]  # ocioso, kernel (com o ocioso), usuário
+    a = tempos(); time.sleep(amostra_s); b = tempos()
+    ocioso, total = b[0] - a[0], (b[1] - a[1]) + (b[2] - a[2])
+    uso = max(0.0, min(1.0, 1 - ocioso / total)) if total else 0.0
+    fila = 0.0
+    try:
+        pdh = ctypes.WinDLL('pdh')
+        class VALOR(ctypes.Structure):
+            _fields_ = [('status', wintypes.DWORD), ('valor', ctypes.c_double)]
+        q, c, v = ctypes.c_void_p(), ctypes.c_void_p(), VALOR()
+        if pdh.PdhOpenQueryW(None, None, ctypes.byref(q)) == 0:
+            if (pdh.PdhAddEnglishCounterW(q, ctypes.c_wchar_p(r'\System\Processor Queue Length'), None, ctypes.byref(c)) == 0
+                    and pdh.PdhCollectQueryData(q) == 0
+                    and pdh.PdhGetFormattedCounterValue(c, 0x200, None, ctypes.byref(v)) == 0):
+                fila = max(0.0, v.valor)
+            pdh.PdhCloseQuery(q)
+    except (OSError, AttributeError):
+        pass
+    m['load1'] = m['load5'] = uso * cpus + fila
+    m['cpu_uso'] = uso * 100
+    return m
+
+def nota_windows():
+    """Trecho dos briefs no Windows: onde rodar os scripts de bin/ (WINDOWS.md). Vazio fora do Windows."""
+    if not WIN:
+        return ''
+    b = bash_exe().replace('\\', '/')
+    return ('## Esta máquina é Windows\n'
+            '- Os comandos `.../bin/...` deste brief são scripts bash e Python: rode-os no Git Bash (a ferramenta Bash), '
+            'com os caminhos como estão escritos aqui (`C:/...`, barras normais).\n'
+            f'- No PowerShell, passe pelo bash do Git: `& "{b}" -lc \'<comando>\'`. O `bash` sozinho no PowerShell é o '
+            'do WSL e não enxerga estes arquivos.\n'
+            '- Pipe, redirecionamento e variável no começo do comando (`PORT=3000 yarn start`) são sintaxe do bash: '
+            'no `bin/prova` e no `bin/slot`, use `-- bash -c \'<comando>\'`.')
