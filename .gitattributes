@@ -1,0 +1,2 @@
+# Scripts bash e Python quebram com CRLF: tudo em LF, também nos clones do Windows (WINDOWS.md).
+* text=auto eol=lf

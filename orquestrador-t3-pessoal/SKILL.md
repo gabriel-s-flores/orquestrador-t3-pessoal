@@ -34,6 +34,8 @@ O primeiro argumento é a pasta de estado; o segundo, opcional, é um controle.
   digitar.
 - **Algo fora do roteiro** (sessão retomada, reinício da máquina, revisor que terminou sem escrever, conflito entre
   PRs, validação externa): [`LICOES.md`](LICOES.md).
+- **Máquina Windows:** rode os comandos de `bin/` na ferramenta Bash (Git Bash), com caminhos `C:/...` de barras
+  normais. No PowerShell, `bash` é o do WSL: passe pelo bash do Git. O que muda e os limites: [`WINDOWS.md`](WINDOWS.md).
 
 **Despertares** chegam como mensagens nesta thread: a conclusão de uma tarefa delegada, um evento de vigília de PR
 (`watch_pull_request`) ou o heartbeat agendado (`schedule_task`). Cada despertar é uma iteração do playbook. Uma
@@ -56,7 +58,8 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
 | [`escrita/`](escrita/ESCRITA.md) | skill | Adaptação em português do unslop: regras, formatos curtos e modelos de tudo o que o usuário lê |
 | `bin/texto.py` | skill, ligada em `<estado>/bin` | Verificador de escrita em português: vícios de IA, forma e tamanho por tipo de texto |
 | `bin/capacidade.sh` | skill, ligada em `<estado>/bin` | Quantos agentes ainda cabem na máquina agora (load, memória, PSI) |
-| `bin/slot` | idem | Semáforo para comandos pesados (build, teste, navegador, instalação), com `nice` e teto de memória |
+| `bin/slot` | idem | Semáforo para comandos pesados (build, teste, navegador, instalação), com prioridade baixa e teto de memória |
+| [`WINDOWS.md`](WINDOWS.md) | skill | Pré-requisitos, instalação e o que os scripts trocam sozinhos no Windows |
 | `bin/escopo.py` | idem | Compara o diff com o contrato de escopo da tarefa |
 | `bin/agentes.py`, `bin/alvo.py` | idem | Registro dos agentes de cada tarefa (taskId, thread, alvo) e o `target` do `delegate_task` por papel ou por tarefa, com o degrau acima da escada |
 | `bin/varrer.sh`, `bin/orfaos.sh` | idem | Varredura de disco, PRs, processos e carga; processos órfãos nas worktrees |

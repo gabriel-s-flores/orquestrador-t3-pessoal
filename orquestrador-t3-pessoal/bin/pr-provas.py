@@ -30,7 +30,7 @@ if len(a) != 2:
     sys.exit('uso: pr-provas.py <ID> <ciclo> [--pr <url|número>] [--simular] | --checar')
 tid, ciclo = a
 pasta = f'{O}/tarefas/{tid}/evidencias/revisao-c{ciclo}'
-r = subprocess.run([os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'provas.py'), tid, ciclo], capture_output=True, text=True)
+r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'provas.py'), tid, ciclo], capture_output=True, text=True)
 if r.returncode != 0:
     print(r.stdout); sys.exit('pr-provas: as provas não estão PROVADO; nada foi enviado')
 m = json.load(open(f'{pasta}/provas.json'))
