@@ -7,7 +7,7 @@ na ferramenta Bash. Os scripts detectam o Windows e trocam sozinhos o que só ex
 
 | Peça | Para quê | Conferir |
 |---|---|---|
-| Git for Windows | o bash que roda os scripts e os hooks | `git --version` |
+| Git for Windows 2.38+ | o bash que roda os scripts e os hooks; o `bin/base.py` usa `git merge-tree --write-tree` | `git --version` |
 | Python 3.10+ no PATH como `python3` | todos os scripts de `bin/` | `python3 --version` |
 | `psutil` | `orfaos.sh` (diretório atual de cada processo) | `python3 -m pip install --user psutil` |
 | Modo de Desenvolvedor ligado | links simbólicos da pasta de estado para a skill | Configurações › Sistema › Para desenvolvedores |
@@ -57,5 +57,5 @@ O `bash` ali é resolvido para o do Git.
 - O load do Windows sai de uma amostra curta, não de uma média de 1 e 5 minutos: os dois números são iguais.
   `CARGA_MAX` e `CARGA_CRITICA` continuam valendo (`capacidade.sh --sugerir`).
 - `PSI_CPU_MAX` e `PSI_MEM_MAX` não têm efeito: o Windows não tem PSI. A memória livre e o load seguram o despacho.
-- `nova-orquestracao.sh` sem o Modo de Desenvolvedor copia `PROVAS.md`, `AMBIENTE.md`, `MODELOS.md` e `ESCOPO.md`:
-  depois de atualizar a skill, copie de novo.
+- `nova-orquestracao.sh` sem o Modo de Desenvolvedor copia `PROVAS.md`, `AMBIENTE.md`, `MODELOS.md`, `ESCOPO.md`,
+  `REVISAO.md` e `INTEGRACAO.md`: depois de atualizar a skill, copie de novo.

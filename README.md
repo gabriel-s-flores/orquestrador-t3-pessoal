@@ -11,6 +11,8 @@ git clone https://github.com/gabriel-s-flores/orquestrador-t3-pessoal.git
 ln -s "$PWD/orquestrador-t3-pessoal/orquestrador-t3-pessoal" ~/.claude/skills/orquestrador-t3-pessoal
 ```
 
+Pede `git` 2.38 ou mais novo (o `bin/base.py` usa `git merge-tree --write-tree`), `python3` 3.10+, `rg` e o `gh` autenticado.
+
 No Windows (Git Bash, com o Modo de Desenvolvedor ligado para os links simbólicos):
 
 ```bash

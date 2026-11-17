@@ -45,6 +45,7 @@ empata com Opus 5.5 em `max` pela metade do custo por tarefa.
 | Revisor de código (`REVISOR`) | **escolha do usuário na montagem**; recomendado GPT-6.1-Sol · `low` (Codex) | Família diferente da do implementador: os pontos cegos não coincidem. `low` é o padrão do Sol no Codex e o que cabe no limite de uso; as provas (`provas.py`) e o `escopo.py` seguram o piso |
 | Revisor das classes G e GG (`REVISOR_CRITICO`) | o mesmo revisor em `medium` (vazio = `REVISOR`) | Só onde o risco justifica um nível a mais |
 | Revisor de reserva (`REVISOR_RESERVA`) | Opus 5.5 · `high` | Entra quando o provedor do revisor sai do ar ou bate no limite. Revisar é conferir, e conferência é o que o effort compra |
+| Revisão final do épico (`CONSELHO`, com `FLUXO=2`) | um modelo forte por provedor · `high` | Uma rodada por épico, todos ao mesmo tempo. Provedores diferentes têm pontos cegos diferentes ([`REVISAO.md`](REVISAO.md)) |
 | Subagente de busca, leitura de logs, inventário de arquivos | Haiku 5.5 (`model: "haiku"` na ferramenta Agent, sem effort) | Leitura que encheria o contexto do agente principal, com erro barato de notar |
 | Subagente de análise (impacto, plano de teste, triagem de falha) | Sonnet 5.5 (`model: "sonnet"`, sem effort) | Julgamento médio, contexto isolado |
 | Fatos durante a sabatina | Haiku 5.5 (agente `Explore` com `model: "haiku"`) | Sem o `model`, o `Explore` roda no modelo da sessão, que é o mais caro |
@@ -128,7 +129,7 @@ Papéis aceitos no lugar da tarefa: `P`, `M`, `G`, `GG`, `REVISOR`, `REVISOR_CRI
 `PLANO_REVISOR`, `ORQUESTRADOR`. `--selecao` imprime no formato do `t3_thread_configure` e do `t3_thread_launch`.
 
 O formato no `orq.env` é `provedor:modelo:effort`. A opção de effort se chama `effort` no Claude e
-`reasoningEffort` no Codex; o `alvo.py` resolve isso. Declare o effort sempre: o padrão muda de modelo para modelo
+`reasoningEffort` no Codex; o `alvo.py` resolve isso. Provedor com outro nome para a opção entra em `EFFORT_OPCAO`. Declare o effort sempre: o padrão muda de modelo para modelo
 (o Opus 5.5 roda um nível abaixo do Opus 5 quando o effort é omitido). Confira em `orchestrator_capabilities` que o
 provedor tem `canRunChildTask: true` antes de usar.
 

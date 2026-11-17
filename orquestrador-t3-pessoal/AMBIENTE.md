@@ -1,14 +1,16 @@
 # Ambiente de teste, autenticação e limites
 
 Os agentes testam só em **localhost e homologação**, com uma conta de teste configurada uma vez pelo usuário.
-Produção, `main`, `master` e `develop` ficam **sempre fora** deste fluxo: nenhum push, merge, PR ou requisição.
+Produção, `main`, `master` e `develop` ficam **fora** deste fluxo: nenhum push, merge, PR ou requisição. A única
+exceção é o PR final do épico, que o usuário liga na montagem (`PR_FINAL="abrir"`): o orquestrador abre esse PR no
+fechamento e nunca faz o merge dele.
 Todo o código se consolida na branch do épico, por PR revisado.
 
 ## O que é permitido
 
 | | Permitido | Proibido |
 |---|---|---|
-| Branches | criar a branch do épico; push nas branches de tarefa (`PREFIXO/*`, `sync/*`); PR com base na branch do épico | push, merge ou PR para `BRANCHES_PROTEGIDAS` (padrão `main master develop`); push direto, force-push ou apagar a branch do épico |
+| Branches | criar a branch do épico; push nas branches de tarefa (`PREFIXO/*`, `sync/*`); PR com base na branch do épico; com `REBASE_FORCADO="sim"`, `--force-with-lease` só na branch da própria tarefa; com `PR_FINAL="abrir"`, um único PR da branch do épico para a `ORIGEM`, aberto pelo orquestrador no fechamento e nunca mesclado pelo fluxo | push, merge ou PR para `BRANCHES_PROTEGIDAS` (padrão `main master develop`); push direto, force-push ou apagar a branch do épico |
 | Leitura | `fetch` de qualquer branch; trazer a `ORIGEM` para o épico pela tarefa de sincronização | — |
 | Ambiente | `HML_URL` e os hosts de `HOSTS_PERMITIDOS` (localhost, homologação) | qualquer host fora da lista; `HOSTS_PROIBIDOS` (produção) é recusado com motivo |
 | Credencial | a conta de **teste** de homologação, entregue pelo `hml exec` | conta pessoal, conta de produção, token pedido no chat |

@@ -2,6 +2,9 @@
 # Confere o manifesto de provas de uma revisão (PROVAS.md) antes de qualquer aprovação.
 # Uso: <estado>/bin/provas.py <ID> <ciclo> [--head <sha>]     valida tarefas/<ID>/evidencias/revisao-c<N>/provas.json
 #      <estado>/bin/provas.py <ID> --criterios                 critérios e tipos de prova exigidos pela tarefa
+# Rodada curta (REVISAO.md): critério com "herdada_de": <ciclo> reaproveita a prova copiada do ciclo anterior. Só vale
+# com rodada-c<N>.json do mkrev.py em "curta", fora dos critérios de "reprovar", e com as checagens do projeto
+# regravadas no head novo ("checagens" no manifesto).
 # Código 0 = PROVADO, 1 = INCOMPLETO, 2 = erro de uso.
 import os, re, sys, json, shutil, subprocess
 sys.dont_write_bytecode = True
@@ -74,6 +77,24 @@ def conferir(pr, onde):
 vistos = set()
 por_id = {str(c.get('id')): c for c in m.get('criterios', [])}
 linhas = []
+herdadas = {cid: str(c.get('herdada_de')) for cid, c in por_id.items() if c.get('herdada_de') not in (None, '')}
+if herdadas:
+    try:
+        rod = json.load(open(f'{O}/tarefas/{tid}/rodada-c{ciclo}.json'))
+    except (FileNotFoundError, json.JSONDecodeError):
+        rod = {}
+    if rod.get('tipo') != 'curta':
+        falhas.append('prova herdada só vale em rodada curta (falta rodada-c<N>.json do mkrev.py, ou a rodada é completa)')
+    proibidos = {str(x) for x in rod.get('reprovar', [])}
+    for cid, de in herdadas.items():
+        if cid in proibidos:
+            falhas.append(f'critério {cid} está ligado a um achado ou à correção: pede prova nova neste head')
+        try:
+            ant = json.load(open(f'{O}/tarefas/{tid}/evidencias/revisao-c{de}/provas.json'))
+        except (FileNotFoundError, json.JSONDecodeError):
+            falhas.append(f'critério {cid}: não achei o manifesto do ciclo {de} de onde a prova foi herdada'); continue
+        if not any(str(x.get('id')) == cid and x.get('resultado') == 'ok' for x in ant.get('criterios', [])):
+            falhas.append(f'critério {cid}: no ciclo {de} ele não estava "ok", então não há prova para herdar')
 for cid, desc in criterios:
     c = por_id.get(cid)
     if not c:
@@ -85,10 +106,20 @@ for cid, desc in criterios:
         falhas.append(f'critério {cid} com resultado "{c.get("resultado")}"')
     if not provas:
         falhas.append(f'critério {cid} sem prova')
-    linhas.append(f'{"✅" if c.get("resultado") == "ok" and tipos else "⛔"} {cid} · {desc[:70]} · {", ".join(sorted(tipos)) or "—"}')
+    linhas.append(f'{"✅" if c.get("resultado") == "ok" and tipos else "⛔"} {cid} · {desc[:70]} · {", ".join(sorted(tipos)) or "—"}'
+                  + (f' (herdada do ciclo {herdadas[cid]})' if cid in herdadas else ''))
 for p in m.get('mutacao', []):
     t = conferir(p, 'mutação')
     if t: vistos.add(t)
+if herdadas:
+    no_head = False
+    for p in m.get('checagens') or []:
+        if conferir(p, 'checagem') == 'log':
+            cab = open(os.path.join(pasta, p['arquivo']), errors='replace').readline()
+            sha = re.search(r'head ([0-9a-f]{7,40})', cab)
+            no_head = no_head or bool(sha and m.get('head') and str(m['head']).startswith(sha.group(1)[:7]))
+    if not no_head:
+        falhas.append('rodada curta: falta em "checagens" um log das checagens do projeto, gravado com bin/prova no head desta rodada')
 for t in exigidos:
     if t not in vistos:
         falhas.append(f'falta prova do tipo "{t}" (exigido pela tarefa)')

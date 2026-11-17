@@ -15,7 +15,7 @@ A classe escolhe o modelo. O `Effort` é opcional (`medium` ou `high`): `—` va
 - **Fora do escopo:** <o que parece próximo e não entra>
 - **Arquivos:** <globs das áreas permitidas, ex.: src/auth/**, test/auth/**>
 - **Orçamento:** <tamanho esperado do diff, ex.: ~300 linhas>
-- **Aceite:** <condições checáveis, uma por linha e numeradas (1.1, 1.2…): comandos que passam, números medidos, cenários>
+- **Aceite:** <condições checáveis, uma por linha e numeradas (1.1, 1.2…): comandos que passam, números medidos, cenários. O caso que cada regra nega (entrada inválida, sem permissão, repetição, vazio) entra como item próprio>
 - **Evidências:** <o que o implementador entrega em evidencias/>
 - **Provas:** <tipos que o revisor precisa produzir: log, print, vídeo, medição, requisição; tela → print, vídeo>
 - **Branch:** <PREFIXO/id-da-tarefa-descricao, a partir da branch do épico>

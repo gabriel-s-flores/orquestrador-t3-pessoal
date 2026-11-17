@@ -10,13 +10,25 @@
 #   --selecao       formato modelSelection (t3_thread_configure, t3_thread_launch)
 #   --spec          formato provedor:modelo:effort (para gravar em agentes.py e passar de volta a --acima)
 #   --bloco impl|rev  o trecho de brief deste modelo (para anexar à devolutiva quando o modelo muda)
+#      <estado>/bin/alvo.py --lista CONSELHO     um target por linha, para cada alvo da lista (REVISAO.md, revisão final)
 # Código 3 = topo da escada, ou modelo fora dela: não há degrau acima.
 import sys, os, json
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import estado, params, spec_de, spec_txt, alvo_tarefa, acima, bloco
+from _orq import estado, params, spec_de, spec_txt, alvo_tarefa, acima, bloco, lista, opcao_effort
 O = estado(); P = params(O)
 a = sys.argv[1:]
+def alvo_json(spec, chave='providerInstanceId'):
+    prov, modelo, effort = spec
+    opcoes = [{'id': opcao_effort(P, prov), 'value': effort}] if effort else []
+    return json.dumps({chave: prov, 'model': modelo, 'options': opcoes}, ensure_ascii=False)
+if len(a) == 2 and a[0] == '--lista':
+    itens = lista(P, a[1].upper())
+    if not itens:
+        sys.exit(f'alvo.py: {a[1].upper()} vazio ou ausente no orq.env')
+    for x in itens:
+        print(alvo_json(spec_de(P, x)))
+    sys.exit(0)
 def opt(nome):
     if nome in a:
         i = a.index(nome)
@@ -47,6 +59,4 @@ if papel_bloco:
 elif '--spec' in flags:
     print(spec_txt(spec))
 else:
-    opcoes = [{'id': 'reasoningEffort' if prov == 'codex' else 'effort', 'value': effort}] if effort else []
-    chave = 'instanceId' if '--selecao' in flags else 'providerInstanceId'
-    print(json.dumps({chave: prov, 'model': modelo, 'options': opcoes}, ensure_ascii=False))
+    print(alvo_json(spec, 'instanceId' if '--selecao' in flags else 'providerInstanceId'))

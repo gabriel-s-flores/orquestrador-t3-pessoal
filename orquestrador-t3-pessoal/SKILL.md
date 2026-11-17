@@ -21,6 +21,7 @@ O primeiro argumento é a pasta de estado; o segundo, opcional, é um controle.
 - **Pasta com `orq.env`, sem controle:** rode **uma iteração** de [`PLAYBOOK.md`](PLAYBOOK.md).
   - Na primeira iteração da sessão, leia por inteiro o playbook, [`T3-V2.md`](T3-V2.md), [`PROMPTS.md`](PROMPTS.md),
     o `PROJETO.md`, o `PAINEL.md`, o `BACKLOG.md`, o fim do `DIARIO.md` e o `PLANO.md`.
+  - Com `FLUXO="2"` no `orq.env`, leia também [`REVISAO.md`](REVISAO.md) e [`INTEGRACAO.md`](INTEGRACAO.md).
 - **Controle `pausar`, `pausar agora`, `retomar` ou `parar`**, ou o usuário pedir isso na conversa: siga
   [`PAUSA.md`](PAUSA.md). `status` só lê o estado e responde com uma página do PAINEL (`html_render`: tarefas,
   agentes como links, PRs, carga), sem despachar.
@@ -49,6 +50,8 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
 | [`MODELOS.md`](MODELOS.md) | skill | Que modelo e effort cada papel, cada classe e cada tarefa usa, a escada de escalonamento e com que modelo abrir a thread |
 | [`PROMPTS.md`](PROMPTS.md), `prompts/` | skill | Como escrever para cada modelo (Fable, Opus, Sonnet, Haiku, outro provedor) e o trecho de brief de cada um |
 | [`ESCOPO.md`](ESCOPO.md) | skill | O contrato de escopo da tarefa e as três barreiras contra scope creep |
+| [`REVISAO.md`](REVISAO.md) | skill | Com `FLUXO=2`: régua de severidade, registro de achados, rodada curta depois da devolutiva e revisão final do épico |
+| [`INTEGRACAO.md`](INTEGRACAO.md) | skill | Com `FLUXO=2`: portão de merge, PR atrás da base, head que mudou depois da revisão e suíte longa na ponta do épico |
 | [`AMBIENTE.md`](AMBIENTE.md) | skill | Limites (branches protegidas, hosts) e a autenticação de teste em localhost e homologação |
 | `bin/guarda.py`, `bin/hml` | skill, ligada em `<estado>/bin` | Hook de pre-push nas worktrees dos agentes e checagem de PR; credenciais e sessão de teste entregues só a hosts permitidos |
 | [`PROVAS.md`](PROVAS.md) | skill | Que provas o revisor produz, o manifesto `provas.json`, a validação e o comentário no PR |
@@ -64,6 +67,7 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
 | `bin/agentes.py`, `bin/alvo.py` | idem | Registro dos agentes de cada tarefa (taskId, thread, alvo) e o `target` do `delegate_task` por papel ou por tarefa, com o degrau acima da escada |
 | `bin/varrer.sh`, `bin/orfaos.sh` | idem | Varredura de disco, PRs, processos e carga; processos órfãos nas worktrees |
 | `bin/mkbrief.py`, `bin/mkrev.py` | idem | Brief do implementador (do BACKLOG + notas) e brief do revisor (PR, head, ciclo + notas), cada um com o trecho do modelo que vai rodá-lo |
+| `bin/base.py`, `bin/tempos.py`, `bin/mkfinal.py` | idem | Se um PR atrás da base precisa se atualizar e se o head novo ainda é o conteúdo revisado; onde foi o relógio de cada tarefa; o brief da revisão final |
 | `orq.env`, `PROJETO.md`, `PLANO.md` | `<estado>/` | Parâmetros, regras do projeto (autorizações, premissas, checagens, validação externa) e o plano aprovado na sabatina |
 | `PAINEL.md`, `DIARIO.md`, `BACKLOG.md` | `<estado>/` | Status das tarefas (fonte da verdade), histórico e decisões `[decisão]`, tarefas com aceite e propostas |
 | `tarefas/<ID>/` | `<estado>/` | `brief.md`, `brief-revisor-cN.md`, `agentes.json`, `relatorio.md`, `escopo-cN.md`, `revisao-cN.md`, `devolutiva-cN.md`, `evidencias/` |
@@ -81,11 +85,14 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
   por `provas.py` antes do merge e resumida num comentário no PR ([`PROVAS.md`](PROVAS.md)).
 - **Consolidação no épico:** toda tarefa entra por PR na branch do épico, e o fluxo termina nela. Ela acompanha a
   `ORIGEM` nos gates, só lendo. Promover o épico é do usuário.
-- **Fora dos limites:** `main`, `master`, `develop` e produção nunca recebem push, merge, PR ou requisição. Testes só
+- **Fora dos limites:** `main`, `master`, `develop` e produção nunca recebem push, merge, PR ou requisição (fora o PR
+  final do épico, aberto e nunca mesclado, se o usuário ligou `PR_FINAL`). Testes só
   em localhost e homologação, com a conta de teste do `hml`, sem pedir login ao usuário ([`AMBIENTE.md`](AMBIENTE.md)).
 - **Diagnóstico com prova:** antes de dizer ao usuário que algo está fora do ar, faça a checagem de verdade
   (`hml vivo` para o ambiente de teste, `pr-provas.py --checar` para o GitHub). Status HTTP na raiz de um servidor não
   prova nada, e sessão ou token vencido se renova sozinho com a conta de teste. Só sobra para ele o que só ele resolve.
+- **Tempo medido:** cada PRONTO, veredito, devolutiva e merge vira evento (`agentes.py evento`), e o `tempos.py`
+  mostra onde o épico gastou o relógio. Mudança de fluxo se decide com esse número ([`LICOES.md`](LICOES.md)).
 - **Máquina responsiva:** nada é despachado sem vaga em `capacidade.sh`, e comando pesado passa pelo `slot`.
 - **Pausa é um estado seguro:** trabalho commitado, nenhum processo vivo, relatório atualizado ([`PAUSA.md`](PAUSA.md)).
 - **Modelo e effort certos para cada tarefa:** a classe escolhe o modelo, a tarefa escolhe o effort, e quem resolve

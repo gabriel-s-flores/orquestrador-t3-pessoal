@@ -182,6 +182,15 @@ def spec_de(P, papel):
         sys.exit(f'alvo: {chave}="{valor}" não está no formato provedor:modelo:effort')
     return partes[0], partes[1], (partes[2] if len(partes) == 3 else '')
 
+def opcao_effort(P, prov):
+    """Nome da opção de effort no target de um provedor: EFFORT_OPCAO="codex=reasoningEffort outro=thinking";
+    sem entrada, reasoningEffort no Codex e effort nos demais."""
+    mapa = {'codex': 'reasoningEffort'}
+    for par in lista(P, 'EFFORT_OPCAO'):
+        if '=' in par:
+            k, v = par.split('=', 1); mapa[k] = v
+    return mapa.get(prov, 'effort')
+
 def spec_txt(spec):
     return ':'.join(x for x in spec if x)
 
