@@ -28,8 +28,9 @@ ligar() {  # ligar <origem> <destino>
 ligar "$S/bin" "$E/bin"; ligar "$S/escrita" "$E/escrita"
 ligar "$S/PROVAS.md" "$E/PROVAS.md"; ligar "$S/AMBIENTE.md" "$E/AMBIENTE.md"
 ligar "$S/MODELOS.md" "$E/MODELOS.md"; ligar "$S/ESCOPO.md" "$E/ESCOPO.md"
+ligar "$S/REVISAO.md" "$E/REVISAO.md"; ligar "$S/INTEGRACAO.md" "$E/INTEGRACAO.md"
 cp "$S"/modelos/{PAINEL.md,DIARIO.md,BACKLOG.md} "$E/"
-cp "$S"/modelos/{brief-implementador.md,brief-revisor.md,relatorio.md} "$E/modelos/"
+cp "$S"/modelos/{brief-implementador.md,brief-revisor.md,brief-revisor-rodada.md,brief-revisao-final.md,achados.md,relatorio.md} "$E/modelos/"
 python3 - "$S/modelos/orq.env" "$PERFIL" "$E/orq.env" <<'PY'
 import os, re, sys, shlex
 modelo, perfil, saida = sys.argv[1:]

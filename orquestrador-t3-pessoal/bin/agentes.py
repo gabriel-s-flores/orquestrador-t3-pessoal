@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-# Registro dos agentes de cada tarefa em tarefas/<ID>/agentes.json (fonte para pausa, retomada, carga e órfãos).
+# Registro dos agentes de cada tarefa em tarefas/<ID>/agentes.json (fonte para pausa, retomada, carga e órfãos) e dos
+# eventos com hora em tarefas/<ID>/eventos.jsonl (fonte do bin/tempos.py; o arquivo só cresce).
 # Uso:
 #   agentes.py set <ID> <papel> chave=valor...   papel: impl | rev-c<N> | plano. Chaves usuais: taskId, threadId,
 #                                                alvo, worktree, estado (rodando|pausando|pausada|concluida|cancelada)
+#                                                Mudança de estado ou de taskId vira evento sozinha.
+#   agentes.py evento <ID> <evento> [chave=valor...]   o que o set não vê: pronto | veredito | devolutiva | aprovada |
+#                                                merge | atualizar-base | suite-inicio | suite-fim
+#                                                (chaves usuais: head, ciclo, resultado, pr)
 #   agentes.py ativos [--json | --contar]        estado rodando ou pausando
 #   agentes.py pausados [--json]                 estado pausada
 #   agentes.py worktrees                         worktrees registradas (todas as tarefas)
@@ -22,6 +27,11 @@ def ler(tid):
         return json.load(open(arq(tid)))
     except FileNotFoundError:
         return {}
+
+def evento(tid, nome, **campos):
+    os.makedirs(f'{O}/tarefas/{tid}', exist_ok=True)
+    with open(f'{O}/tarefas/{tid}/eventos.jsonl', 'a') as f:
+        f.write(json.dumps({'em': agora(), 'evento': nome, **campos}, ensure_ascii=False) + '\n')
 
 def todos():
     for f in sorted(glob.glob(f'{O}/tarefas/*/agentes.json')):
@@ -45,6 +55,7 @@ if cmd == 'set':
     tid, papel, pares = sys.argv[2], sys.argv[3], sys.argv[4:]
     os.makedirs(os.path.dirname(arq(tid)), exist_ok=True)
     d = ler(tid); a = d.setdefault(papel, {})
+    antes = (a.get('estado'), a.get('taskId'))
     for par in pares:
         if '=' not in par:
             sys.exit(f'agentes.py: "{par}" não é chave=valor')
@@ -57,7 +68,19 @@ if cmd == 'set':
     a['atualizado'] = agora()
     tmp = arq(tid) + '.tmp'
     json.dump(d, open(tmp, 'w'), ensure_ascii=False, indent=1); os.replace(tmp, arq(tid))
+    if a.get('estado') != antes[0]:
+        evento(tid, 'estado', papel=papel, estado=a.get('estado'), alvo=a.get('alvo', ''))
+    elif a.get('taskId') != antes[1]:
+        evento(tid, 'taskId', papel=papel)
     print(f'{tid} {papel}: ' + ', '.join(f'{k}={v}' for k, v in a.items() if k != 'historico'))
+elif cmd == 'evento' and len(sys.argv) >= 4:
+    campos = {}
+    for par in sys.argv[4:]:
+        if '=' not in par:
+            sys.exit(f'agentes.py: "{par}" não é chave=valor')
+        k, v = par.split('=', 1); campos[k] = v
+    evento(sys.argv[2], sys.argv[3], **campos)
+    print(f'{sys.argv[2]} evento {sys.argv[3]}' + ''.join(f' {k}={v}' for k, v in campos.items()))
 elif cmd == 'ativos':
     listar({'rodando', 'pausando'}, sys.argv[2] if len(sys.argv) > 2 else '')
 elif cmd == 'pausados':

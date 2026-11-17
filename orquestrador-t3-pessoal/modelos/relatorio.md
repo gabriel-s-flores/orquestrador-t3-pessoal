@@ -38,4 +38,4 @@
 <preenchida só ao pausar: item atual, o que falta, como retomar, HEAD>
 
 ## Ciclos
-<uma entrada por devolutiva recebida: o que mudou>
+<uma entrada por devolutiva recebida: cada ID de achado com `corrigido` (commit) ou `contestado` (evidência)>

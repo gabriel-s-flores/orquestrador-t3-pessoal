@@ -51,7 +51,8 @@ tarefas em paralelo e quem é dono de quais arquivos, as decisões anteriores co
 não carrega cautela solta ("cuidado com…", "nunca repita…"): o Fable aplica a cautela ao resto da tarefa. Se há um
 risco, diga onde e o que fazer com ele.
 
-**Devolutiva:** itens específicos, cada um com onde, o quê e como conferir. Não repasse regra geral que o revisor
+**Devolutiva:** itens específicos, cada um com onde, o quê e como conferir. Com `FLUXO=2`, cada item começa pelo ID
+do achado e pede a menor correção que resolve ([`REVISAO.md`](REVISAO.md)). Não repasse regra geral que o revisor
 escreveu ("pare no primeiro erro", "nunca altere X"): reescreva como correção com alcance. Feche com o que já pode ser
 feito sem perguntar (push na branch, rodar de novo as checagens).
 
@@ -92,7 +93,8 @@ contexto.
 Uma chamada, só leitura. O prompt leva, nesta ordem: o `PLANO.md` e o BACKLOG como caminhos de
 arquivo; a missão ("procure motivos para este backlog falhar"); o que procurar (tarefa que extrapola o plano, requisito
 sem tarefa, dependência errada, classe ou effort subestimados, aceite que não dá para verificar por comando, tarefas
-paralelas que disputam os mesmos arquivos); o formato da volta (uma linha por achado: tarefa, problema, correção
+paralelas que disputam os mesmos arquivos, regra sem o caso que ela nega no `Aceite`, tarefa G que segura várias
+dependentes e cujo contrato caberia numa tarefa anterior menor); o formato da volta (uma linha por achado: tarefa, problema, correção
 proposta); e a frase "é só leitura: não edite arquivos nem crie tarefas".
 
 ## Higiene das instruções

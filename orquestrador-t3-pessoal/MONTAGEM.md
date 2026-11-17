@@ -32,11 +32,23 @@ Mais uma rodada de sabatina, agora sobre como rodar. Os ramos obrigatórios da �
 - as **provas** por tipo de tarefa (tela: print e vídeo; API: requisição; desempenho: medição) e se o resumo delas vai
   como comentário no PR (`PROVAS_PR`, padrão `comentario`). Em repositório público o comentário é público: confirme com
   o usuário, e use `desligado` se ele preferir;
+- a **revisão**: rodadas depois da primeira curtas (`REVISAO_RODADA`, padrão `curta`) e revisão final do épico
+  (`REVISAO_FINAL`: `conselho`, `unico` ou `nao`), em [`REVISAO.md`](REVISAO.md);
+- a **suíte longa** (`SUITE_LONGA`): se o projeto tem uma suíte de dezenas de minutos, ela roda na ponta do épico
+  depois dos merges e nos gates, e não em cada head de PR ([`INTEGRACAO.md`](INTEGRACAO.md)). Se o usuário quiser a
+  suíte por PR, escreva no `PROJETO.md` que cada devolutiva e cada atualização da base repetem a rodada;
+- como um PR atrasado traz a base (`ATUALIZAR_BASE`, padrão `limpo`: quem não divide arquivo com o que entrou só se
+  atualiza uma vez, depois de aprovado), e se ele autoriza rebase com
+  `--force-with-lease` só na branch da tarefa (`REBASE_FORCADO`, padrão `nao`: a base entra por `git merge`);
+- o **PR final** (`PR_FINAL`, padrão `nao`): se no fechamento você abre o PR da branch do épico para a `ORIGEM`,
+  pronto para ele revisar e sem merge. É a única exceção à regra de nenhum PR para branch protegida
+  ([`AMBIENTE.md`](AMBIENTE.md));
 - o projeto no T3 (`t3_project_list`, ou o projeto desta thread);
 - o que ele autoriza sem perguntar: criar e assentar agentes, criar a branch do épico, push em `<PREFIXO>/*`, PRs,
   merge na branch do épico depois de revisão aprovada e provada, a tarefa de sincronização com a `ORIGEM`,
   comentários nos PRs;
-- o que ele não autoriza: branches dele, force-push, contas, dispositivos reais, serviços pagos…;
+- o que ele não autoriza: branches dele, force-push (fora o `--force-with-lease` na branch da tarefa, se ele ligar
+  `REBASE_FORCADO`), contas, dispositivos reais, serviços pagos…;
 - as premissas técnicas e as checagens obrigatórias (lint, testes, builds) com os limites de paralelismo de cada
   ferramenta (`--maxWorkers`, `-p`, `-j`);
 - a validação externa antes do merge (se houver) e se ela exige autorização a cada vez;
@@ -61,11 +73,17 @@ Haiku (agente `Explore` com `model: "haiku"`; sem o `model`, ele roda no modelo 
      seguinte num effort menor.
    - **Orquestrador do loop:** `Opus 5.5 · medium (Recomendado)` ou `Fable 5.2 · medium` (épico com mais de ~12
      tarefas, ou várias G e GG em paralelo).
-3. Grave as escolhas no `orq.env` (`REVISOR`, `REVISOR_CRITICO`, `MODELO_*`, `ORQUESTRADOR`). O `REVISOR_RESERVA` é
+   - **Revisão final do épico** (com 4 tarefas ou mais): `Conselho: um modelo forte por provedor (Recomendado)`,
+     `Um revisor só` ou `Sem revisão final`. No conselho, monte `CONSELHO` com o modelo mais forte de cada provedor
+     que o catálogo mostra com `canRunChildTask: true` (três, se houver), em effort `high`. Provedor cuja opção de
+     effort tem outro nome entra em `EFFORT_OPCAO`.
+3. Grave as escolhas no `orq.env` (`REVISOR`, `REVISOR_CRITICO`, `MODELO_*`, `ORQUESTRADOR`, `REVISAO_FINAL`,
+   `CONSELHO`). O `REVISOR_RESERVA` é
    um Claude (padrão Opus 5.5 high), usado se o provedor do revisor sair do ar ou bater no limite. A `ESCADA` só muda
    se o usuário trocou os modelos dos implementadores.
 
-**Pronto quando `$E/bin/alvo.py REVISOR`, `alvo.py M` e `alvo.py ORQUESTRADOR` imprimem alvos que existem no
+**Pronto quando `$E/bin/alvo.py REVISOR`, `alvo.py M`, `alvo.py ORQUESTRADOR` e, com conselho,
+`alvo.py --lista CONSELHO` imprimem alvos que existem no
 catálogo, com o effort entre os valores que o catálogo aceita.**
 
 ## 4. Pasta de estado
@@ -128,6 +146,13 @@ remoto, `guarda.py checar` e `pr-provas.py --checar` respondem ok e, em projeto 
   classe escolhe o modelo, e o campo `**Effort:**` sobe para `high` a tarefa em que a conferência pesa (casos de
   borda, código antigo, dados, segurança) ou desce para `medium` a que tem especificação fechada e teste automático.
   `—` vale o padrão da classe;
+- **casos negativos dentro do `Aceite`**: para cada regra que a tarefa cria, o caso que ela nega (entrada inválida,
+  sem permissão, repetição, vazio, duas requisições ao mesmo tempo) entra como item numerado, quando o risco existe
+  naquela tarefa. Nas revisões medidas, metade dos defeitos estava dentro de um critério que o implementador provou
+  só no caminho feliz ([`LICOES.md`](LICOES.md)). É item do `Aceite`, não campo novo: os scripts só leem o `Aceite`;
+- **cadeia de dependências**: uma tarefa G de que várias dependem segura todas enquanto é revisada. Veja se o
+  contrato dela (tipos, schema, interfaces) cabe numa tarefa pequena que entra antes, para as outras dependerem só
+  dessa;
 - gates onde uma decisão do usuário ou uma medição separa as fases;
 - a seção `## Propostas` vazia.
 
@@ -181,6 +206,9 @@ está fixada.**
 Rode uma tarefa pequena de ponta a ponta com o usuário olhando: brief, `delegate_task`, `PRONTO`, conferência,
 `escopo.py`, revisor, merge e settle. Durante a implementação, faça uma pausa suave e uma retomada
 ([`PAUSA.md`](PAUSA.md)) para ele ver o ponto seguro.
+
+O ensaio cobre o caminho sem devolutiva. A primeira devolutiva do épico é o ensaio do registro de achados e da rodada
+curta ([`REVISAO.md`](REVISAO.md)): acompanhe essa tarefa de perto e diga ao usuário como ela fechou.
 
 **Pronto quando o PR entrou em `BASE`, as duas threads estão assentadas e a pausa voltou sem perda.**
 

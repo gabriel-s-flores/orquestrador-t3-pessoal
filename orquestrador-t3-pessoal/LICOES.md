@@ -83,6 +83,33 @@ se o motivo deixou de existir, a lição sai.
   artefatos prontos para a sessão autorizada ser curta.
 - **Parar no fim do dia é rotina.** Ofereça a pausa e a retomada agendadas na montagem.
 
+## Medição de novembro de 2026
+
+Em 16/11/2026 as sessões de 114 tarefas de 8 orquestrações foram medidas, em tempo e em tokens. Os scripts e os
+números estão em `~/.local/share/orquestrador-t3/medicao-2026-11-16/`. O `bin/tempos.py` faz as mesmas contas com os
+eventos de uma pasta de estado, para comparar um épico novo com esse retrato.
+
+- **A revisão por tarefa acha defeito real.** A primeira revisão pediu mudanças em 1 de 16 tarefas P, 22 de 45 M e 34
+  de 46 G. De 105 achados altos e médios, 93 eram defeito de comportamento, 89 achados executando algo, e só 4
+  dependiam de outra tarefa do épico. Por isso a primeira revisão continua completa, por tarefa e antes do merge.
+- **Onde o relógio vai.** Entre PRONTO e merge, a mediana foi de 25 min sem devolutiva e de 105 min com. Na mesma
+  classe, a devolutiva custa cerca de 65 min em M e 30 em G. O revisor começa 1 min depois do PRONTO (mediana).
+- **A prova do implementador passa em falso.** Numa amostra, 23 de 47 defeitos estavam dentro de um critério que o
+  relatório dava como atendido, quase sempre com evidência só do caminho feliz. Daí os casos negativos no `Aceite`.
+- **A segunda revisão acha quase tudo na correção** (20 de 25 achados). Daí a rodada curta
+  ([`REVISAO.md`](REVISAO.md)).
+- **Suíte inteira por head de PR custa caro.** Num épico, 47% do tempo entre PRONTO e merge foi espera pela suíte com
+  a revisão já aprovada, e cada rebase ou devolutiva jogava fora uma rodada. Daí a suíte na ponta do épico e a base
+  trazida uma vez só, depois da aprovação ([`INTEGRACAO.md`](INTEGRACAO.md)).
+- **O que ficou de fora, e por quê.** Revisão por bloco de tarefas no lugar da revisão por tarefa: o efeito na
+  qualidade não foi medido. Classe P sem revisor: economizaria menos de 4% dos tokens de revisão, e a única P
+  reprovada tinha defeito sério. Verificador extra dentro da thread do implementador: custaria mais tokens do que os
+  ciclos de devolutiva que evita, a menos que evitasse uns 70% deles. Dependente começar antes do merge da
+  dependência: encurtaria o caminho crítico em até 43%, mas três em cada quatro dependências G ainda mudam na
+  revisão. Fica para um piloto com medição.
+- **Sem investigar ainda:** o laço do orquestrador gastou 22% dos tokens do Claude, e 13% dos tokens de revisão no
+  Codex foram para execuções que terminaram sem veredito.
+
 ## Escrita e segredos
 
 - Heredoc com `<<'EOF'` (aspas) para textos com crase, `$` ou aspas, como briefs e devolutivas.

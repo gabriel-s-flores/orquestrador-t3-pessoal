@@ -44,7 +44,13 @@ tarefa, o relatório e o plano. O relatório do implementador **não é evidênc
    - critério de aceite não atendido → achado alto ou médio, conforme o critério.
 
    Sugestão de melhoria sua **não é achado**: vai em "Fora do escopo / propostas".
-5. **Achado com evidência.** Alto ou médio traz `arquivo:linha` e como reproduzir. O que você suspeita e não conseguiu
+5. **Achado com evidência.** Cada achado tem um ID que não muda (`c{CICLO}-1`, `c{CICLO}-2`…). Severidade: **alta**
+   quando o caso que a tarefa pretende não funciona (critério de aceite falha, regressão, perda de dado, falha de
+   segurança); **média** quando é defeito real que quem usa a tarefa vai encontrar, dentro do objetivo dela;
+   **baixa** no resto (outro caminho, caso raro, custo pequeno, estilo). Alto ou médio traz `arquivo:linha` e como
+   reproduzir. Quando a reprodução é um teste automático, grave-o em
+   `{DIR_TAREFA}/evidencias/revisao-c{CICLO}/teste-<id>.<ext>.txt`, falhando neste head, para o implementador
+   incorporar. O que você suspeita e não conseguiu
    reproduzir entra como baixo, marcado "não reproduzido". A correção sugerida diz onde e o quê: não escreva regra
    geral ("nunca…", "sempre…", "pare no primeiro erro"), porque ela chega ao implementador como instrução permanente.
 6. Se a sua ferramenta tiver subagentes, use-os só para leitura que encheria o seu contexto (busca ampla, bateria de
@@ -80,7 +86,7 @@ Head revisado: <sha>
 ## Checagens que rodei (comando → resultado)
 ## Critérios de aceite (um por um: ok / falha + arquivo de prova)
 ## Auditoria de escopo (cada arquivo fora do contrato: justificado? achado?)
-## Achados (severidade alta/média/baixa · arquivo:linha · problema · como reproduzir · correção sugerida)
+## Achados (ID · severidade alta/média/baixa · critério que derruba · arquivo:linha · problema · como reproduzir · correção sugerida)
 ## Fora do escopo / propostas
 ```
 

@@ -8,6 +8,11 @@ este playbook onde os dois divergirem. As ferramentas V2 estão em [`T3-V2.md`](
 Cada despertar é **uma iteração**, do passo 0 ao 9. Você planeja, despacha, confere, faz merge e relata. O código do
 projeto chega só pelos PRs dos agentes.
 
+**`FLUXO="2"` no `orq.env`** liga o que está em [`REVISAO.md`](REVISAO.md) (registro de achados, rodada curta,
+revisão final) e em [`INTEGRACAO.md`](INTEGRACAO.md) (portão de merge, PR atrás da base, suíte longa). Onde este
+playbook diz "com `FLUXO=2`", siga o trecho citado. Pasta de estado sem a chave foi montada antes dela: vale só o
+texto daqui.
+
 ## 0. Varredura (toda iteração, antes de tudo)
 
 1. `$E/bin/varrer.sh`: pausa, heartbeat, PRs abertos para `$BASE`, sinais em disco por tarefa ativa, processos
@@ -56,9 +61,10 @@ git -C "$CHECKOUT" fetch origin --prune --quiet
 
 Para cada implementador, pelo `task_status` e pelo bloco `STATUS:` da conclusão:
 
-- **`PRONTO`: conferência objetiva.**
+- **`PRONTO`:** registre `$E/bin/agentes.py evento <ID> pronto head=<sha>` e faça a **conferência objetiva**.
   - o PR aponta para `$BASE` a partir da branch da tarefa (`$E/bin/guarda.py pr <n>` dá `OK`), está sem conflito e
-    foi rebaseado (`git merge-base --is-ancestor origin/$BASE <head>`);
+    foi rebaseado (`git merge-base --is-ancestor origin/$BASE <head>`). Com `FLUXO=2`, no lugar do rebase vale o
+    resultado do `base.py` ([`INTEGRACAO.md`](INTEGRACAO.md), "PR atrás da base");
   - o hook dos limites está ativo na worktree do agente (`guarda.py instalado <worktree>`);
   - o `relatorio.md` tem todas as seções, inclusive o **Mapa de escopo**;
   - as evidências citadas existem e as checagens batem com o brief;
@@ -91,13 +97,17 @@ Para cada implementador, pelo `task_status` e pelo bloco `STATUS:` da conclusão
 
 ## 4. Revisões (`em revisão`)
 
-Revisão escrita (`tarefas/<ID>/revisao-c<N>.md`):
+Revisão escrita (`tarefas/<ID>/revisao-c<N>.md`): registre
+`$E/bin/agentes.py evento <ID> veredito ciclo=<N> resultado=<APROVAR|MUDANCAS>`. Com `FLUXO=2`, os achados, a
+devolutiva e a rodada seguinte seguem [`REVISAO.md`](REVISAO.md), e o merge passa pelo portão de
+[`INTEGRACAO.md`](INTEGRACAO.md).
 
 - **`APROVAR`, `Escopo: DENTRO` e `PROVAS: PROVADO`:**
   1. **Provas** ([`PROVAS.md`](PROVAS.md)): `$E/bin/provas.py <ID> <N> --head <sha do PR>`. `INCOMPLETO` não é
      aprovação: mande a lista do que falta ao mesmo revisor (`t3_thread_send` ao `childThreadId` dele) e espere;
      não conta como ciclo. Confira também que o revisor rodou as checagens e que o head revisado é o head atual do
-     PR. Head mudou → novo ciclo de revisão, sem devolutiva.
+     PR. Head mudou → novo ciclo de revisão, sem devolutiva (com `FLUXO=2`, quem decide é o `base.py --equivale`:
+     [`INTEGRACAO.md`](INTEGRACAO.md)). Provas conferidas: `agentes.py evento <ID> aprovada ciclo=<N>`.
   2. Se o `PROJETO.md` exige **validação externa** (dispositivo real, homologação), faça-a antes do merge e só com
      a autorização do usuário naquele momento. Sem autorização: status `aprovada — aguarda <validação>`, artefato
      pronto, e peça.
@@ -107,7 +117,8 @@ Revisão escrita (`tarefas/<ID>/revisao-c<N>.md`):
      `gh pr merge <n> --repo "$REPO" --squash --subject "<título do PR> (#<n>)" --match-head-commit <sha revisado>`.
      Depois `git -C "$CHECKOUT" merge --ff-only "origin/$BASE"` (após o fetch). Merge e pull são um passo só:
      nenhuma pausa entra entre eles.
-  5. Status `concluída ✅`. No resumo da iteração, mostre a prova principal da tarefa (print ou vídeo) com o caminho
+  5. Status `concluída ✅` e `agentes.py evento <ID> merge pr=<n>`.
+     No resumo da iteração, mostre a prova principal da tarefa (print ou vídeo) com o caminho
      absoluto, como no modelo do guia.
   6. `t3_thread_organize` `settle` no revisor. O implementador assenta sozinho com o merge do PR vinculado; se não
      assentar, faça o settle.
@@ -122,7 +133,8 @@ Revisão escrita (`tarefas/<ID>/revisao-c<N>.md`):
     devolutiva. Grave `agentes.py set <ID> impl alvo=$novo`.
   - A devolutiva leva correções com alcance (onde, o quê, como conferir), nunca a regra geral que o revisor
     escreveu ([`PROMPTS.md`](PROMPTS.md)).
-  - Envie a devolutiva com `t3_thread_send` ao `childThreadId` do implementador, que devolve um `taskId` novo: grave
+  - Envie a devolutiva com `t3_thread_send` ao `childThreadId` do implementador e registre
+    `agentes.py evento <ID> devolutiva ciclo=<N>`. O envio devolve um `taskId` novo: grave
     com `agentes.py`. Status `corrigindo`; settle do revisor deste ciclo.
   - No `PRONTO` seguinte: conferência objetiva e **revisor novo** (`delegate_task` novo, ciclo N+1). As notas levam
     a devolutiva, a resposta do implementador e as objeções em aberto.
@@ -131,7 +143,8 @@ Revisão escrita (`tarefas/<ID>/revisao-c<N>.md`):
 - **Revisor terminou sem arquivo:** `waiting_for_children` → espere. Senão, uma mensagem pedindo a revisão. Sem
   resposta, abra uma rodada nova com a parcial nas notas.
 
-**Depois de cada merge:** os PRs paralelos podem conflitar. A vigília te acorda; peça ao implementador **só o
+**Depois de cada merge:** com `FLUXO=2`, siga [`INTEGRACAO.md`](INTEGRACAO.md) ("PR atrás da base" e "Suíte longa").
+Sem a chave: os PRs paralelos podem conflitar. A vigília te acorda; peça ao implementador **só o
 rebase** (e refazer artefatos binários que conflitaram). Antes do merge, confira com
 `git range-diff <base-antiga>..<head-antigo> origin/$BASE..<head-novo>` que nada além do rebase mudou. Avise as
 tarefas em andamento que tocam nos mesmos arquivos.
@@ -154,6 +167,10 @@ tarefas em andamento que tocam nos mesmos arquivos.
    - `target`: `$E/bin/alvo.py --tarefa <ID>` (o modelo da classe, com o effort da tarefa);
    - `clientRequestId`: `<ORQ_ID>-<ID>-impl`.
 
+   Tarefa que passa para outro agente (o anterior falhou ou foi cancelado): as notas dão a branch e o head que ele
+   deixou, e dizem que o relatório e os commits herdados são contexto, não prova. O agente novo confere o que
+   funciona antes de continuar e mantém os commits do anterior.
+
    Tarefa redespachada num passo acima: `mkbrief.py <ID> <notas.md> --alvo <novo alvo>` e o mesmo alvo no `target`.
 
    Grave com `$E/bin/agentes.py set <ID> impl taskId=… threadId=… alvo=$($E/bin/alvo.py --tarefa <ID> --spec) estado=rodando`. Status
@@ -167,6 +184,9 @@ tarefas em andamento que tocam nos mesmos arquivos.
    - `isolation: "worktree"`, `mode: "async"`;
    - `target`: `$E/bin/alvo.py --tarefa <ID> REVISOR` (já escolhe `REVISOR_CRITICO` nas classes G e GG);
    - `clientRequestId`: `<ORQ_ID>-<ID>-rev-c<N>`.
+
+   Do ciclo 2 em diante, com `FLUXO=2`: passe `--reprovar <critérios ligados aos achados abertos>`. O `mkrev.py`
+   escolhe entre rodada curta e revisão completa e avisa no stderr ([`REVISAO.md`](REVISAO.md)).
 
    Revisor de reserva (provedor fora do ar ou no limite): `mkrev.py … --alvo REVISOR_RESERVA` e
    `alvo.py REVISOR_RESERVA` no `target`, para o brief sair com o trecho do modelo certo.
@@ -183,6 +203,9 @@ push e não faz merge em nenhuma branch de `BRANCHES_PROTEGIDAS` ([`AMBIENTE.md`
 medições e provas. Mostre o resultado como página (`html_preview` e `html_render`): uma linha por critério com o
 número medido, e as provas visuais das tarefas do gate em miniatura. Escreva o resultado no DIARIO e no PAINEL. Gate
 reprovado → as dependentes ficam `em espera` e o usuário decide.
+
+Com `FLUXO=2`: havendo `SUITE_LONGA`, o gate só passa com a suíte verde na ponta do épico
+([`INTEGRACAO.md`](INTEGRACAO.md)), e a página do gate leva a saída de `$E/bin/tempos.py`.
 
 **Sincronização com a `$ORIGEM`** (`SYNC_ORIGEM=gate`): em cada gate e no fim, se
 `git -C "$CHECKOUT" rev-list --count "origin/$BASE..origin/$ORIGEM"` for maior que zero, acrescente ao BACKLOG a
@@ -205,9 +228,16 @@ com ela.
 - **Branch:** sync/<base-em-minúsculas>-<AAAAMMDD>
 ```
 
+Com `FLUXO=2`, depois do merge de cada SYNC confira as tarefas pendentes contra o que veio da `$ORIGEM`
+([`INTEGRACAO.md`](INTEGRACAO.md), "Sincronização").
+
+**Revisão final:** com `FLUXO=2` e `REVISAO_FINAL` diferente de `nao`, ela vem antes do fechamento
+([`REVISAO.md`](REVISAO.md)).
+
 **Fechamento do épico:** com todas as tarefas e gates concluídos e a sincronização feita, escreva
 `$E/fechamento.md`: a branch, as tarefas com seus PRs e provas, e os riscos, no formato de
 [`escrita/ESCRITA.md`](escrita/ESCRITA.md). Ele serve de corpo para o PR do épico, que quem abre é o usuário.
+Com `PR_FINAL="abrir"`, quem abre é você, pronto e sem merge ([`INTEGRACAO.md`](INTEGRACAO.md), "PR final do épico").
 
 ## 7. Registrar
 
@@ -247,7 +277,8 @@ com `update_scheduled_task` só quando o regime mudar:
 
 Sem `schedule_task` disponível, volte ao modo antigo: `ScheduleWakeup` com o prompt `/loop /orquestrador-t3-pessoal $E`.
 
-**Fim:** com o épico fechado (passo 6), escreva o relatório final no modelo do guia (o que foi entregue,
+**Fim:** com o épico fechado (passo 6), grave `$E/bin/tempos.py > $E/tempos.txt` (onde foi o relógio do
+épico), cite esse arquivo e escreva o relatório final no modelo do guia (o que foi entregue,
 as decisões sem o usuário, as propostas que ficaram, os riscos, o que não foi testado), com `texto.py --tipo final`
 limpo. Na thread, mostre antes a página do fechamento (`html_render`: tarefas com PR e provas em miniatura) e
 depois o texto curto. Grave no DIARIO e avise. Para devolver a thread: `list_thread_pull_requests` (todo PR do
@@ -260,7 +291,8 @@ e desafixe a thread.
   Cópias de trabalho do usuário ficam na branch em que ele as deixou.
 - Coordenação visível: seus turnos, as tarefas delegadas, as vigílias, o heartbeat e os arquivos de estado. Nenhum
   processo de fundo seu.
-- Limites: [`AMBIENTE.md`](AMBIENTE.md). `main`, `master`, `develop` e produção ficam fora: nenhum push, merge, PR ou
+- Limites: [`AMBIENTE.md`](AMBIENTE.md), com a exceção do PR final que ele descreve. `main`, `master`, `develop` e
+  produção ficam fora: nenhum push, merge, PR ou
   requisição. Testes só em localhost e homologação, com a conta de teste do `hml`. Credencial nunca é pedida no chat.
 - Escopo: [`ESCOPO.md`](ESCOPO.md). Você não cria tarefa, não muda aceite e não amplia globs sem o usuário.
 - Escrita: [`escrita/ESCRITA.md`](escrita/ESCRITA.md). Texto que o usuário não lê não serve.

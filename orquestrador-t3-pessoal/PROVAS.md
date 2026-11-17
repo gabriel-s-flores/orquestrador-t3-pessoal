@@ -75,6 +75,36 @@ critérios esperada sai de `<estado>/bin/provas.py <ID> --criterios`.
 `Resultado: PROVADO` libera a aprovação. `INCOMPLETO` não é aprovação: o orquestrador devolve ao mesmo revisor
 (`t3_thread_send`) a lista do que falta, e isso não conta como ciclo.
 
+## Rodada curta
+
+Vale só quando o brief da revisão diz "rodada curta" (ciclo 2 em diante, em orquestração com `FLUXO="2"`). Na revisão
+completa, toda prova é nova e esta seção não se aplica. Na rodada curta, o revisor prova de novo só o que a correção
+pode ter mudado:
+
+- **prova nova, no head da rodada:** os critérios ligados aos achados (`mkrev.py --reprovar`) e os que a correção
+  tocou;
+- **prova herdada:** nos outros critérios, ele copia os arquivos de `evidencias/revisao-c<N-1>/` para a pasta da
+  rodada e marca o critério com `"herdada_de": "<N-1>"`. Os arquivos ficam na pasta nova, e o envio segue igual;
+- **checagens no head novo:** os logs das checagens do projeto, gravados com `bin/prova`, entram em `"checagens"`;
+- **mutação:** onde a tarefa exige, a mutação é feita na linha central da correção e entra em `"mutacao"`.
+
+```json
+{
+  "tarefa": "T1.1", "ciclo": 2, "head": "<sha completo desta rodada>", "pr": "<url do PR>",
+  "checagens": [{"tipo": "log", "arquivo": "testes-c2.log", "resumo": "214 passed, exit 0"}],
+  "criterios": [
+    {"id": "1.1", "descricao": "login com OAuth funciona", "resultado": "ok",
+     "provas": [{"tipo": "log", "arquivo": "testes-login-c2.log", "resumo": "o caso do achado c1-1 passa"}]},
+    {"id": "1.2", "descricao": "logout encerra a sessão", "resultado": "ok", "herdada_de": "1",
+     "provas": [{"tipo": "video", "arquivo": "fluxo-logout.webm", "resumo": "copiado do ciclo 1"}]}
+  ],
+  "mutacao": [{"tipo": "mutacao", "arquivo": "mutacao-correcao.log", "resumo": "sem a linha da correção, o teste do c1-1 cai"}]
+}
+```
+
+O `provas.py` recusa a prova herdada fora de rodada curta, em critério de `--reprovar`, vinda de um ciclo em que o
+critério não estava `ok`, ou sem um log de checagem gravado no head da rodada.
+
 ## No PR
 
 Com a revisão aprovada e `PROVADO`, antes do merge:

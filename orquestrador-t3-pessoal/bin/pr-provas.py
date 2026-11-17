@@ -6,7 +6,7 @@
 import os, re, sys, json, shutil, subprocess, tempfile, datetime
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _orq import estado, params, mascarar
+from _orq import estado, params, mascarar, spec_de
 O = estado(); P = params(O)
 a = sys.argv[1:]
 simular = '--simular' in a
@@ -52,7 +52,20 @@ linhas += ['', 'Os arquivos de prova ficam na pasta de estado da orquestração,
 rev = f'{O}/tarefas/{tid}/revisao-c{ciclo}.md'
 if os.path.exists(rev):
     linhas += ['', '<details><summary>Revisão completa</summary>', '', open(rev).read().strip()[:40000], '', '</details>']
-texto = mascarar('\n'.join(linhas))
+def nota():
+    """Nota de atribuição do comentário: o modelo do orquestrador e o login do usuário. Sem login, sem nota."""
+    r = gh('api', 'user', '--jq', '.login')
+    login = r.stdout.strip() if r.returncode == 0 else ''
+    if not login:
+        return []
+    try:
+        mid = spec_de(P, 'ORQUESTRADOR')[1]
+    except SystemExit:
+        mid = ''
+    mm = re.match(r'claude-([a-z]+)-(\d+)-(\d+)$', mid)
+    modelo = f'Claude {mm.group(1).capitalize()} {mm.group(2)}.{mm.group(3)}' if mm else 'T3 Code'
+    return ['> [!NOTE]', f'> 🤖 **{modelo} respondendo por {login}**', '']
+texto = mascarar('\n'.join(nota() + linhas))
 
 livro_f = f'{O}/tarefas/{tid}/pr-comentarios.json'
 livro = json.load(open(livro_f)) if os.path.exists(livro_f) else []
