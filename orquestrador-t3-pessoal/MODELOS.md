@@ -50,6 +50,8 @@ empata com Opus 5.5 em `max` pela metade do custo por tarefa.
 | Subagente de análise (impacto, plano de teste, triagem de falha) | Sonnet 5.5 (`model: "sonnet"`, sem effort) | Julgamento médio, contexto isolado |
 | Fatos durante a sabatina | Haiku 5.5 (agente `Explore` com `model: "haiku"`) | Sem o `model`, o `Explore` roda no modelo da sessão, que é o mais caro |
 | Pedido de rebase, ajuste de relatório, artefato faltando | o mesmo implementador (`t3_thread_send`) | Não cria agente novo: o contexto já está lá |
+| Pedido de base na fila de integração (conflito) | o mesmo implementador, reconfigurado para o alvo da classe (`alvo.py --tarefa <ID> --selecao`) | Resolver conflito não pede o degrau a que a tarefa subiu na escada ([`INTEGRACAO.md`](INTEGRACAO.md)) |
+| Rodada na ponta do épico (checagem de ponta, suíte longa) | agente de teste no alvo `P` | Roda comandos e relata o que falhou |
 
 Edição de código e decisão ficam no agente principal, nunca num subagente menor: quando o modelo pequeno erra a
 leitura, o principal abre o arquivo errado e gasta mais do que economizou. Fable não roda como subagente sem pedido

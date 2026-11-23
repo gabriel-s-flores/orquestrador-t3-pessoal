@@ -37,16 +37,23 @@ Mais uma rodada de sabatina, agora sobre como rodar. Os ramos obrigatórios da �
 - a **suíte longa** (`SUITE_LONGA`): se o projeto tem uma suíte de dezenas de minutos, ela roda na ponta do épico
   depois dos merges e nos gates, e não em cada head de PR ([`INTEGRACAO.md`](INTEGRACAO.md)). Se o usuário quiser a
   suíte por PR, escreva no `PROJETO.md` que cada devolutiva e cada atualização da base repetem a rodada;
-- como um PR atrasado traz a base (`ATUALIZAR_BASE`, padrão `limpo`: quem não divide arquivo com o que entrou só se
-  atualiza uma vez, depois de aprovado), e se ele autoriza rebase com
-  `--force-with-lease` só na branch da tarefa (`REBASE_FORCADO`, padrão `nao`: a base entra por `git merge`);
+- a **integração** ([`INTEGRACAO.md`](INTEGRACAO.md)):
+  - os PRs aprovados entram um por vez (`FILA_INTEGRACAO`, padrão `sim`), e só quem tem a vez traz a base;
+  - PR atrás da base com merge limpo entra sem trazê-la, e as checagens rodam na ponta do épico (`MERGE_LIMPO`,
+    padrão `direto`). O custo: um conflito que o git não vê pode chegar ao épico e só aparecer minutos depois, na
+    checagem de ponta. Com `atualizar`, cada PR é conferido em cima da base antes do merge, ao preço de uma
+    atualização com agente por PR;
+  - o comando das checagens na ponta (`CHECAGEM_PONTA`; vazio vale a tabela de checagens do `PROJETO.md`);
+  - o teto de PRs abertos (`MAX_PRS_ABERTOS`; vazio vale `MAX_AGENTES` + 1): acima dele, nenhuma implementação nova;
+  - se ele autoriza rebase com `--force-with-lease` só na branch da tarefa (`REBASE_FORCADO`, padrão `nao`: a base
+    entra por `git merge`);
 - o **PR final** (`PR_FINAL`, padrão `nao`): se no fechamento você abre o PR da branch do épico para a `ORIGEM`,
   pronto para ele revisar e sem merge. É a única exceção à regra de nenhum PR para branch protegida
   ([`AMBIENTE.md`](AMBIENTE.md));
 - o projeto no T3 (`t3_project_list`, ou o projeto desta thread);
 - o que ele autoriza sem perguntar: criar e assentar agentes, criar a branch do épico, push em `<PREFIXO>/*`, PRs,
-  merge na branch do épico depois de revisão aprovada e provada, a tarefa de sincronização com a `ORIGEM`,
-  comentários nos PRs;
+  merge na branch do épico depois de revisão aprovada e provada, trazer a base para a branch de um PR aprovado
+  quando o merge é limpo (`gh pr update-branch`), a tarefa de sincronização com a `ORIGEM`, comentários nos PRs;
 - o que ele não autoriza: branches dele, force-push (fora o `--force-with-lease` na branch da tarefa, se ele ligar
   `REBASE_FORCADO`), contas, dispositivos reais, serviços pagos…;
 - as premissas técnicas e as checagens obrigatórias (lint, testes, builds) com os limites de paralelismo de cada

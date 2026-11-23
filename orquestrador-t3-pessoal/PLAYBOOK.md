@@ -9,14 +9,14 @@ Cada despertar é **uma iteração**, do passo 0 ao 9. Você planeja, despacha, 
 projeto chega só pelos PRs dos agentes.
 
 **`FLUXO="2"` no `orq.env`** liga o que está em [`REVISAO.md`](REVISAO.md) (registro de achados, rodada curta,
-revisão final) e em [`INTEGRACAO.md`](INTEGRACAO.md) (portão de merge, PR atrás da base, suíte longa). Onde este
+revisão final) e em [`INTEGRACAO.md`](INTEGRACAO.md) (portão de merge, fila de integração, ponta do épico). Onde este
 playbook diz "com `FLUXO=2`", siga o trecho citado. Pasta de estado sem a chave foi montada antes dela: vale só o
 texto daqui.
 
 ## 0. Varredura (toda iteração, antes de tudo)
 
-1. `$E/bin/varrer.sh`: pausa, heartbeat, PRs abertos para `$BASE`, sinais em disco por tarefa ativa, processos
-   órfãos e carga. Todo sinal é processado **nesta** iteração.
+1. `$E/bin/varrer.sh`: pausa, heartbeat, PRs abertos para `$BASE`, a fila de integração, sinais em disco por tarefa
+   ativa, processos órfãos e carga. Todo sinal é processado **nesta** iteração.
 2. `$E/bin/agentes.py ativos` e, para cada agente, `task_status`. Ler um resultado terminal confirma a entrega: a
    mesma conclusão não volta a te acordar.
 
@@ -63,8 +63,9 @@ Para cada implementador, pelo `task_status` e pelo bloco `STATUS:` da conclusão
 
 - **`PRONTO`:** registre `$E/bin/agentes.py evento <ID> pronto head=<sha>` e faça a **conferência objetiva**.
   - o PR aponta para `$BASE` a partir da branch da tarefa (`$E/bin/guarda.py pr <n>` dá `OK`), está sem conflito e
-    foi rebaseado (`git merge-base --is-ancestor origin/$BASE <head>`). Com `FLUXO=2`, no lugar do rebase vale o
-    resultado do `base.py` ([`INTEGRACAO.md`](INTEGRACAO.md), "PR atrás da base");
+    foi rebaseado (`git merge-base --is-ancestor origin/$BASE <head>`). Com `FLUXO=2` e a fila de integração, PR
+    atrás da base ou em conflito com ela segue para a revisão no head entregue: a base entra na vez dele
+    ([`INTEGRACAO.md`](INTEGRACAO.md), "Fila de integração"). Sem a fila, vale o `base.py` ("Sem fila");
   - o hook dos limites está ativo na worktree do agente (`guarda.py instalado <worktree>`);
   - o `relatorio.md` tem todas as seções, inclusive o **Mapa de escopo**;
   - as evidências citadas existem e as checagens batem com o brief;
@@ -73,6 +74,9 @@ Para cada implementador, pelo `task_status` e pelo bloco `STATUS:` da conclusão
 
   Faltou algo → `t3_thread_send` ao `childThreadId` dizendo exatamente o quê (não conta como ciclo). Tudo certo →
   `watch_pull_request` do PR e revisor (passo 5.6).
+- **`PRONTO` depois de um pedido de base** (a tarefa tem a vez na fila): `fila.py entra <ID> <PR> <head novo>`,
+  `base.py --equivale <head revisado> <head novo>` e `fila.py vez` ([`INTEGRACAO.md`](INTEGRACAO.md)). Não é ciclo
+  novo e não repete a conferência objetiva.
 - **`BLOQUEADO`:**
   - `HML: …`: rode `hml vivo` você mesmo antes de qualquer coisa. `NO AR` → devolva ao agente "o login pelo
     formulário funciona: entre de novo com `HML_USUARIO` e `HML_SENHA` e siga". `FORA DO AR` → a tarefa espera e o
@@ -113,16 +117,21 @@ devolutiva e a rodada seguinte seguem [`REVISAO.md`](REVISAO.md), e o merge pass
      pronto, e peça.
   3. **Provas no PR** (`PROVAS_PR=comentario`): `$E/bin/pr-provas.py <ID> <N>` comenta no PR a lista de provas por
      critério e a revisão. Falhou → registre no DIARIO e siga: o comentário não segura o merge.
-  4. `$E/bin/guarda.py pr <n>` de novo (`OK` = base é o épico). Merge na branch do épico:
-     `gh pr merge <n> --repo "$REPO" --squash --subject "<título do PR> (#<n>)" --match-head-commit <sha revisado>`.
+  4. **Fila** (com `FLUXO=2` e `FILA_INTEGRACAO="sim"`): `$E/bin/fila.py entra <ID> <PR> <head>` e status
+     `aprovada — na fila`. O merge acontece quando o `fila.py vez` der a vez a este PR, com a ação que ele indicar
+     ([`INTEGRACAO.md`](INTEGRACAO.md), "Fila de integração"). Os itens 5 a 8 valem nessa hora. Rode o `fila.py vez`
+     em toda iteração, mesmo sem aprovação nova.
+  5. `$E/bin/guarda.py pr <n>` de novo (`OK` = base é o épico). Merge na branch do épico:
+     `gh pr merge <n> --repo "$REPO" --squash --subject "<título do PR> (#<n>)" --match-head-commit <head atual>`
+     (o head revisado, ou o head novo que o `base.py --equivale` aceitou).
      Depois `git -C "$CHECKOUT" merge --ff-only "origin/$BASE"` (após o fetch). Merge e pull são um passo só:
      nenhuma pausa entra entre eles.
-  5. Status `concluída ✅` e `agentes.py evento <ID> merge pr=<n>`.
+  6. Status `concluída ✅`, `agentes.py evento <ID> merge pr=<n>` e, com a fila, `fila.py sai <ID>`.
      No resumo da iteração, mostre a prova principal da tarefa (print ou vídeo) com o caminho
      absoluto, como no modelo do guia.
-  6. `t3_thread_organize` `settle` no revisor. O implementador assenta sozinho com o merge do PR vinculado; se não
+  7. `t3_thread_organize` `settle` no revisor. O implementador assenta sozinho com o merge do PR vinculado; se não
      assentar, faça o settle.
-  7. Achados baixos e sugestões: [`ESCOPO.md`](ESCOPO.md), "O que o orquestrador faz com os extras".
+  8. Achados baixos e sugestões: [`ESCOPO.md`](ESCOPO.md), "O que o orquestrador faz com os extras".
 - **`MUDANÇAS` ou `Escopo: EXTRAPOLA`:** escreva `tarefas/<ID>/devolutiva-c<N>.md` só com os obrigatórios (altos e
   médios ligados a aceite, correção, regressão, segurança ou escopo), no formato de
   [`escrita/ESCRITA.md`](escrita/ESCRITA.md) e com `texto.py --tipo devolutiva` limpo. Sugestões vão para as
@@ -133,6 +142,8 @@ devolutiva e a rodada seguinte seguem [`REVISAO.md`](REVISAO.md), e o merge pass
     devolutiva. Grave `agentes.py set <ID> impl alvo=$novo`.
   - A devolutiva leva correções com alcance (onde, o quê, como conferir), nunca a regra geral que o revisor
     escreveu ([`PROMPTS.md`](PROMPTS.md)).
+  - Com a fila de integração: a devolutiva pede também `git merge origin/$BASE` quando o `base.py` não deu
+    `EM DIA`, porque o implementador já vai rodar as checagens. Tarefa que estava na fila sai dela (`fila.py sai`).
   - Envie a devolutiva com `t3_thread_send` ao `childThreadId` do implementador e registre
     `agentes.py evento <ID> devolutiva ciclo=<N>`. O envio devolve um `taskId` novo: grave
     com `agentes.py`. Status `corrigindo`; settle do revisor deste ciclo.
@@ -143,7 +154,8 @@ devolutiva e a rodada seguinte seguem [`REVISAO.md`](REVISAO.md), e o merge pass
 - **Revisor terminou sem arquivo:** `waiting_for_children` → espere. Senão, uma mensagem pedindo a revisão. Sem
   resposta, abra uma rodada nova com a parcial nas notas.
 
-**Depois de cada merge:** com `FLUXO=2`, siga [`INTEGRACAO.md`](INTEGRACAO.md) ("PR atrás da base" e "Suíte longa").
+**Depois de cada merge:** com `FLUXO=2`, siga [`INTEGRACAO.md`](INTEGRACAO.md): "Fila de integração" e "Ponta do
+épico", ou "Sem fila" na pasta de estado que não tem `FILA_INTEGRACAO`.
 Sem a chave: os PRs paralelos podem conflitar. A vigília te acorda; peça ao implementador **só o
 rebase** (e refazer artefatos binários que conflitaram). Antes do merge, confira com
 `git range-diff <base-antiga>..<head-antigo> origin/$BASE..<head-novo>` que nada além do rebase mudou. Avise as
@@ -154,7 +166,14 @@ tarefas em andamento que tocam nos mesmos arquivos.
 1. **Prontas** = `pendente` com todas as dependências `concluída ✅` (ou o gate aprovado), na ordem do BACKLOG.
    Propostas nunca entram.
 2. **Vagas:** o `VAGAS=` do `capacidade.sh`. Ele já aplica `MAX_AGENTES`, a carga, a memória livre, o PSI e
-   `DESPACHO_POR_ITERACAO`, porque o setup de cada worktree nova é pesado. `VAGAS=0` → não despache.
+   `DESPACHO_POR_ITERACAO`, porque o setup de cada worktree nova é pesado. `VAGAS=0` → não despache. Com `FLUXO=2`,
+   as vagas vão nesta ordem, para fechar o que está aberto antes de abrir mais:
+   1. quem tem a vez na fila de integração e precisa de agente, e a rodada na ponta do épico;
+   2. revisão de PR pronto: a rodada curta antes da completa, e o PR mais antigo primeiro;
+   3. implementação nova, até o `VAGAS_IMPL=`. Ele zera quando os PRs abertos mais as implementações que ainda vão
+      abrir PR chegam a `MAX_PRS_ABERTOS`: cada PR aberto a mais envelhece atrás da base e pede atualização. Revisor
+      sem cota não libera implementação acima do teto. PR parado à espera do usuário (`bloqueada`, `em espera`) não
+      conta: despache uma tarefa a mais para cada um e registre `[decisão]`.
 3. **Base em dia:** `git -C "$CHECKOUT" merge --ff-only "origin/$BASE"` (as worktrees nascem deste commit).
 4. **Brief:** escreva as notas da tarefa num arquivo e rode `$E/bin/mkbrief.py <ID> <notas.md>`. As notas cobrem o
    estado da base (o que já entrou), as tarefas em paralelo, quem é dono de quais arquivos e as decisões anteriores
@@ -204,8 +223,8 @@ medições e provas. Mostre o resultado como página (`html_preview` e `html_ren
 número medido, e as provas visuais das tarefas do gate em miniatura. Escreva o resultado no DIARIO e no PAINEL. Gate
 reprovado → as dependentes ficam `em espera` e o usuário decide.
 
-Com `FLUXO=2`: havendo `SUITE_LONGA`, o gate só passa com a suíte verde na ponta do épico
-([`INTEGRACAO.md`](INTEGRACAO.md)), e a página do gate leva a saída de `$E/bin/tempos.py`.
+Com `FLUXO=2`: o gate só passa com a ponta do épico verde, isto é, a checagem de ponta (com `MERGE_LIMPO="direto"`)
+e a suíte longa, se houver ([`INTEGRACAO.md`](INTEGRACAO.md)). A página do gate leva a saída de `$E/bin/tempos.py`.
 
 **Sincronização com a `$ORIGEM`** (`SYNC_ORIGEM=gate`): em cada gate e no fim, se
 `git -C "$CHECKOUT" rev-list --count "origin/$BASE..origin/$ORIGEM"` for maior que zero, acrescente ao BACKLOG a
@@ -245,7 +264,7 @@ Tudo o que o usuário lê segue [`escrita/ESCRITA.md`](escrita/ESCRITA.md): curt
 pelo que importa.
 
 - **`PAINEL.md`:** "Precisa de você" no topo; depois a tabela de tarefas, agentes ativos (`N / MAX_AGENTES`),
-  carga, último commit visto e próximos passos.
+  carga, a fila de integração (a saída de `fila.py`), a ponta do épico, último commit visto e próximos passos.
 - **`DIARIO.md`:** uma entrada no modelo do guia (horário, o que mudou, por quê). Decisões sem o usuário levam
   `[decisão]`; escalonamentos de modelo, `[modelo]`.
 - **Thread:** o resumo da iteração no modelo do guia (até 6 linhas), com os agentes como links `t3-thread://` e a
@@ -288,7 +307,8 @@ e desafixe a thread.
 ## Regras
 
 - O seu checkout é `$CHECKOUT`, só com fast-forward. Você não commita no repositório: o estado vive em `$E`.
-  Cópias de trabalho do usuário ficam na branch em que ele as deixou.
+  A única escrita sua numa branch de tarefa é o `gh pr update-branch` de um PR aprovado com merge limpo, na vez dele
+  na fila ([`INTEGRACAO.md`](INTEGRACAO.md)). Cópias de trabalho do usuário ficam na branch em que ele as deixou.
 - Coordenação visível: seus turnos, as tarefas delegadas, as vigílias, o heartbeat e os arquivos de estado. Nenhum
   processo de fundo seu.
 - Limites: [`AMBIENTE.md`](AMBIENTE.md), com a exceção do PR final que ele descreve. `main`, `master`, `develop` e
@@ -301,8 +321,9 @@ e desafixe a thread.
 - AFK: diante de dúvida, escolha a opção mais conservadora que respeite o plano, registre `[decisão]` e siga.
 - Sem pedir aprovação: o que o `PROJETO.md` lista como autorizado, e a rotina do loop. Repetir chamada que só lê
   (`task_status`, `t3_thread_read`, `gh pr view`, `git fetch`) ou script de `bin/` que falhou por motivo passageiro;
-  mandar continuação, pedido de rebase e retomada aos seus agentes; assentar os agentes que terminaram; ajustar o
-  heartbeat. Cautela de uma nota ou de uma lição vale para o caso que ela cita, não para o resto do loop.
+  mandar continuação, pedido de base e retomada aos seus agentes; o `gh pr update-branch` e o merge de quem tem a vez
+  na fila; assentar os agentes que terminaram; ajustar o heartbeat. Cautela de uma nota ou de uma lição vale para o
+  caso que ela cita, não para o resto do loop.
 - Contexto enxuto: leitura longa (diff grande, log, relatório de vários agentes) vai para um subagente Haiku, que
   volta com a conclusão e as linhas citadas. Decisão, devolutiva e merge ficam com você ([`MODELOS.md`](MODELOS.md)).
 - Modelo e effort: quem escolhe é o `alvo.py`, pela classe e pelo `**Effort:**` da tarefa. Você não troca alvo por
