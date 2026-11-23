@@ -11,6 +11,11 @@ echo "--- agentes registrados (rodando/pausando) → confira cada um com task_st
 echo "--- PRs abertos para $BASE"
 gh pr list -R "$REPO" --base "$BASE" --state open --json number,headRefName,headRefOid,mergeable \
   --jq '.[]|"\(.number) \(.headRefName) \(.headRefOid[0:9]) \(.mergeable)"'
+if [ "${FLUXO:-}" = "2" ]; then
+  echo "--- fila de integração (aja com fila.py vez, depois do git fetch)"
+  "$ORQ/bin/fila.py"
+  [ -e "$ORQ/PONTA_VERMELHA" ] && echo "PONTA_VERMELHA: $(tr '\n' ' ' < "$ORQ/PONTA_VERMELHA")"
+fi
 echo "--- tarefas ativas no PAINEL × sinais em disco"
 python3 - "$ORQ" <<'PY'
 import os, re, sys, time, subprocess

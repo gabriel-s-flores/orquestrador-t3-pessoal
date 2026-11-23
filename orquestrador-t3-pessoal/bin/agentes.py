@@ -6,7 +6,8 @@
 #                                                alvo, worktree, estado (rodando|pausando|pausada|concluida|cancelada)
 #                                                Mudança de estado ou de taskId vira evento sozinha.
 #   agentes.py evento <ID> <evento> [chave=valor...]   o que o set não vê: pronto | veredito | devolutiva | aprovada |
-#                                                merge | atualizar-base | suite-inicio | suite-fim
+#                                                merge | atualizar-base (gravado pelo fila.py pediu) |
+#                                                suite-inicio | suite-fim | ponta-inicio | ponta-fim
 #                                                (chaves usuais: head, ciclo, resultado, pr)
 #   agentes.py ativos [--json | --contar]        estado rodando ou pausando
 #   agentes.py pausados [--json]                 estado pausada

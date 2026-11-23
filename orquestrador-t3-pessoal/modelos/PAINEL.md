@@ -7,6 +7,7 @@
 ## Estado
 
 - **Agentes ativos:** 0 / {MAX_AGENTES} · **Carga:** `<load / memória livre>` · **Pausa:** não
+- **Fila de integração:** `<saída de bin/fila.py, ou "vazia">` · **Ponta do épico:** `<sha> verde | vermelha | conferindo`
 - **Último commit visto em `{BASE}`:** `<sha>`
 - **Thread do orquestrador:** `<id>` (fixada) · **Projeto T3:** `<id>` · **Worktree:** `<CHECKOUT>`
 - **Heartbeat:** `<id do schedule_task>` a cada `<N>` min

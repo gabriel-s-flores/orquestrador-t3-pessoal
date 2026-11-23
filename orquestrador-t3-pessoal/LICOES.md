@@ -64,8 +64,15 @@ se o motivo deixou de existir, a lição sai.
 
 ## Fluxo de tarefas
 
-- **PRs paralelos conflitam depois de cada merge.** Peça só o rebase e confira com `git range-diff`. Capturas e outros
-  binários de referência conflitam sempre: quem entra por último refaz a referência com o código já mesclado.
+- **PRs paralelos conflitam depois de cada merge.** Sem `FLUXO=2`, peça só o rebase e confira com `git range-diff`.
+  Capturas e outros binários de referência conflitam sempre: quem entra por último refaz a referência com o código
+  já mesclado.
+- **Merge sem fila refaz atualização de base** (épico de 31 tarefas, 22/11/2026). Com o revisor sem cota, as
+  implementações seguiram e 8 PRs ficaram abertos para 3 vagas. Em 85 min, 6 merges pediram 7 atualizações da base e
+  3 avisos de "a base andou de novo". A tarefa do caminho crítico refez as checagens 3 vezes no degrau mais caro da
+  escada, por um conflito de documentação, e entrou por último. PR `COMUM` trazia a base antes da revisão e de novo
+  antes do merge. Daí a fila de integração, o merge direto de PR limpo com checagem na ponta, a base trazida só na
+  vez e o teto de PRs abertos ([`INTEGRACAO.md`](INTEGRACAO.md)). O `tempos.py` conta os pedidos de base por tarefa.
 - **Achados baixos não abrem ciclo.** Junte os de várias revisões numa tarefa de limpeza, com o "pode" do usuário.
   Os ciclos (no máximo 2) ficam para os altos e médios.
 - **O revisor de cada ciclo é um agente novo**, com notas do que conferir e o histórico. O do ciclo anterior recebe

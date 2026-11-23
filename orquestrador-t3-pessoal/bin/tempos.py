@@ -4,6 +4,7 @@
 # Uso: <estado>/bin/tempos.py [--json] [<ID>...]
 #   Por tarefa, em minutos e com as pausas descontadas: despacho→PRONTO, PRONTO→merge e, dentro deste, revisores
 #   rodando, correção depois de devolutiva, espera antes do primeiro revisor e espera depois da aprovação.
+#   A coluna "bases" conta os pedidos de atualização da base (evento atualizar-base): mais de 1 por tarefa é retrabalho.
 #   No fim, medianas por classe e com ou sem devolutiva. Tarefa sem os eventos pronto e merge fica fora das contas.
 import os, sys, json, glob
 from datetime import datetime
@@ -58,6 +59,7 @@ for tid in ids:
     if tid == 'SUITE' or not despacho:
         continue
     r = {'tarefa': tid, 'classe': classe, 'devolutivas': sum(1 for e in ev if e['evento'] == 'devolutiva'),
+         'bases': sum(1 for e in ev if e['evento'] == 'atualizar-base'),
          'revisores': sum(1 for e in ev if e['evento'] == 'estado' and e.get('papel', '').startswith('rev') and e.get('estado') == 'rodando')}
     if despacho and pronto:
         r['impl'] = mn(despacho, pronto) - soma(pausa, despacho, pronto)
@@ -71,10 +73,10 @@ for tid in ids:
 if em_json:
     print(json.dumps(linhas, ensure_ascii=False, indent=1)); sys.exit(0)
 f = lambda v: '   —' if v is None else f'{v:4.0f}'
-print('tarefa        classe  impl  PRONTO→merge  revisão  correção  antes do revisor  pós-aprovação  devolutivas  revisores')
+print('tarefa        classe  impl  PRONTO→merge  revisão  correção  antes do revisor  pós-aprovação  devolutivas  revisores  bases')
 for r in linhas:
     print(f"{r['tarefa']:13} {r['classe']:5} {f(r.get('impl'))}  {f(r.get('gate')):>12}  {f(r.get('revisao')):>7}  {f(r.get('correcao')):>8}  "
-          f"{f(r.get('antes_revisor')):>16}  {f(r.get('pos_aprovacao')):>13}  {r['devolutivas']:11}  {r['revisores']:9}")
+          f"{f(r.get('antes_revisor')):>16}  {f(r.get('pos_aprovacao')):>13}  {r['devolutivas']:11}  {r['revisores']:9}  {r['bases']:5}")
 ok = [r for r in linhas if 'gate' in r]
 print(f'\n{len(ok)} de {len(linhas)} tarefas com PRONTO e merge registrados (minutos, pausas descontadas)')
 def resumo(nome, rs):
@@ -84,14 +86,18 @@ def resumo(nome, rs):
     print(f"{nome:22} n={len(rs):3} · impl mediana {f(med([r['impl'] for r in rs if 'impl' in r]))} · PRONTO→merge mediana {f(med([r['gate'] for r in rs]))} "
           f"soma {g / 60:5.1f}h · revisores {100 * sum(r['revisao'] for r in rs) / g:3.0f}% · correção {100 * sum(r['correcao'] for r in rs) / g:3.0f}% · "
           f"antes do revisor {100 * sum(r['antes_revisor'] for r in rs) / g:3.0f}% · pós-aprovação {100 * sum(r['pos_aprovacao'] for r in rs) / g:3.0f}%")
-try:
-    su = [json.loads(l) for l in open(f'{O}/tarefas/SUITE/eventos.jsonl') if l.strip()]
-except FileNotFoundError:
-    su = []
-ini = {e.get('head'): dt(e['em']) for e in su if e['evento'] == 'suite-inicio'}
-rod = [(mn(ini[e.get('head')], dt(e['em'])), e.get('resultado', '?')) for e in su if e['evento'] == 'suite-fim' and e.get('head') in ini]
-if rod:
-    print(f"suíte longa: {len(rod)} rodada(s), {sum(1 for _, x in rod if x == 'verde')} verde(s), mediana {f(med([m for m, _ in rod]))} min, soma {sum(m for m, _ in rod) / 60:.1f}h")
+def rodadas(pasta, prefixo, nome):
+    try:
+        ev = [json.loads(l) for l in open(f'{O}/tarefas/{pasta}/eventos.jsonl') if l.strip()]
+    except FileNotFoundError:
+        return
+    ini = {e.get('head'): dt(e['em']) for e in ev if e['evento'] == prefixo + '-inicio'}
+    rod = [(mn(ini[e.get('head')], dt(e['em'])), e.get('resultado', '?')) for e in ev if e['evento'] == prefixo + '-fim' and e.get('head') in ini]
+    if rod:
+        print(f"{nome}: {len(rod)} rodada(s), {sum(1 for _, x in rod if x == 'verde')} verde(s), mediana {f(med([m for m, _ in rod]))} min, soma {sum(m for m, _ in rod) / 60:.1f}h")
+rodadas('SUITE', 'suite', 'suíte longa'); rodadas('PONTA', 'ponta', 'checagem de ponta')
+if linhas:
+    print(f"pedidos de base: {sum(r['bases'] for r in linhas)} em {len(linhas)} tarefa(s); {sum(1 for r in linhas if r['bases'] > 1)} tarefa(s) com mais de 1")
 resumo('todas', ok); resumo('sem devolutiva', [r for r in ok if not r['devolutivas']]); resumo('com devolutiva', [r for r in ok if r['devolutivas']])
 for c in ('P', 'M', 'G', 'GG'):
     resumo('classe ' + c, [r for r in ok if r['classe'] == c])

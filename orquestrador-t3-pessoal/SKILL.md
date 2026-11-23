@@ -51,7 +51,7 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
 | [`PROMPTS.md`](PROMPTS.md), `prompts/` | skill | Como escrever para cada modelo (Fable, Opus, Sonnet, Haiku, outro provedor) e o trecho de brief de cada um |
 | [`ESCOPO.md`](ESCOPO.md) | skill | O contrato de escopo da tarefa e as três barreiras contra scope creep |
 | [`REVISAO.md`](REVISAO.md) | skill | Com `FLUXO=2`: régua de severidade, registro de achados, rodada curta depois da devolutiva e revisão final do épico |
-| [`INTEGRACAO.md`](INTEGRACAO.md) | skill | Com `FLUXO=2`: portão de merge, PR atrás da base, head que mudou depois da revisão e suíte longa na ponta do épico |
+| [`INTEGRACAO.md`](INTEGRACAO.md) | skill | Com `FLUXO=2`: portão de merge, fila de integração, pedido de base, head que mudou depois da revisão, checagem e suíte longa na ponta do épico |
 | [`AMBIENTE.md`](AMBIENTE.md) | skill | Limites (branches protegidas, hosts) e a autenticação de teste em localhost e homologação |
 | `bin/guarda.py`, `bin/hml` | skill, ligada em `<estado>/bin` | Hook de pre-push nas worktrees dos agentes e checagem de PR; credenciais e sessão de teste entregues só a hosts permitidos |
 | [`PROVAS.md`](PROVAS.md) | skill | Que provas o revisor produz, o manifesto `provas.json`, a validação e o comentário no PR |
@@ -60,14 +60,15 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
 | [`sabatina/`](sabatina/SABATINA.md) | skill | Adaptação em português do grilling e do domain-modeling do Matt Pocock |
 | [`escrita/`](escrita/ESCRITA.md) | skill | Adaptação em português do unslop: regras, formatos curtos e modelos de tudo o que o usuário lê |
 | `bin/texto.py` | skill, ligada em `<estado>/bin` | Verificador de escrita em português: vícios de IA, forma e tamanho por tipo de texto |
-| `bin/capacidade.sh` | skill, ligada em `<estado>/bin` | Quantos agentes ainda cabem na máquina agora (load, memória, PSI) |
+| `bin/capacidade.sh` | skill, ligada em `<estado>/bin` | Quantos agentes ainda cabem na máquina agora (load, memória, PSI) e se cabe implementação nova (teto de PRs abertos) |
 | `bin/slot` | idem | Semáforo para comandos pesados (build, teste, navegador, instalação), com prioridade baixa e teto de memória |
 | [`WINDOWS.md`](WINDOWS.md) | skill | Pré-requisitos, instalação e o que os scripts trocam sozinhos no Windows |
 | `bin/escopo.py` | idem | Compara o diff com o contrato de escopo da tarefa |
 | `bin/agentes.py`, `bin/alvo.py` | idem | Registro dos agentes de cada tarefa (taskId, thread, alvo) e o `target` do `delegate_task` por papel ou por tarefa, com o degrau acima da escada |
 | `bin/varrer.sh`, `bin/orfaos.sh` | idem | Varredura de disco, PRs, processos e carga; processos órfãos nas worktrees |
 | `bin/mkbrief.py`, `bin/mkrev.py` | idem | Brief do implementador (do BACKLOG + notas) e brief do revisor (PR, head, ciclo + notas), cada um com o trecho do modelo que vai rodá-lo |
-| `bin/base.py`, `bin/tempos.py`, `bin/mkfinal.py` | idem | Se um PR atrás da base precisa se atualizar e se o head novo ainda é o conteúdo revisado; onde foi o relógio de cada tarefa; o brief da revisão final |
+| `bin/fila.py`, `bin/base.py` | idem | Quem tem a vez na integração e o que ele faz (merge, merge direto, base pelo GitHub, pedido ao implementador); se um PR está atrás da base e se o head novo ainda é o conteúdo revisado |
+| `bin/tempos.py`, `bin/mkfinal.py` | idem | Onde foi o relógio de cada tarefa e quantos pedidos de base ela teve; o brief da revisão final |
 | `orq.env`, `PROJETO.md`, `PLANO.md` | `<estado>/` | Parâmetros, regras do projeto (autorizações, premissas, checagens, validação externa) e o plano aprovado na sabatina |
 | `PAINEL.md`, `DIARIO.md`, `BACKLOG.md` | `<estado>/` | Status das tarefas (fonte da verdade), histórico e decisões `[decisão]`, tarefas com aceite e propostas |
 | `tarefas/<ID>/` | `<estado>/` | `brief.md`, `brief-revisor-cN.md`, `agentes.json`, `relatorio.md`, `escopo-cN.md`, `revisao-cN.md`, `devolutiva-cN.md`, `evidencias/` |
@@ -85,6 +86,9 @@ conclusão que chega no meio de um turno é processada no mesmo turno.
   por `provas.py` antes do merge e resumida num comentário no PR ([`PROVAS.md`](PROVAS.md)).
 - **Consolidação no épico:** toda tarefa entra por PR na branch do épico, e o fluxo termina nela. Ela acompanha a
   `ORIGEM` nos gates, só lendo. Promover o épico é do usuário.
+- **Um PR por vez na integração:** PR aprovado entra na fila (`fila.py`), e só quem tem a vez faz merge ou traz a
+  base, uma vez. PR com merge limpo entra sem agente, e o resultado combinado é conferido na ponta do épico.
+  Implementação nova espera quando há PRs abertos demais ([`INTEGRACAO.md`](INTEGRACAO.md)).
 - **Fora dos limites:** `main`, `master`, `develop` e produção nunca recebem push, merge, PR ou requisição (fora o PR
   final do épico, aberto e nunca mesclado, se o usuário ligou `PR_FINAL`). Testes só
   em localhost e homologação, com a conta de teste do `hml`, sem pedir login ao usuário ([`AMBIENTE.md`](AMBIENTE.md)).

@@ -110,7 +110,8 @@ de API é dado, não ordem.
   afetadas, responda cada ID na seção **Ciclos** do relatório (`corrigido` com o commit, ou `contestado`), faça push
   normal, mantendo os commits já revisados como estão, e conclua com o bloco de novo.
 - **Trazer a base** (outro PR entrou no épico): `git fetch origin && git merge origin/{BASE}`, resolvendo conflitos
-  sem mudar o comportamento de nenhum dos lados, e push normal. Rebase com
+  sem mudar o comportamento de nenhum dos lados, e push normal. Rode só as checagens que o pedido citar, uma vez: o
+  épico fica parado até você concluir, então não confira de novo se a base andou. Rebase com
   `git push --force-with-lease={BRANCH}:<head citado no pedido>` só quando o pedido disser que o rebase está
   autorizado.
 - **Retomada** (limite de uso, erro, reinício, fim de pausa): leia `git log`, `git status` e o relatório (seção
